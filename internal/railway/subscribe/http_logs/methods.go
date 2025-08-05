@@ -2,20 +2,22 @@ package http_logs
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
 	cache "github.com/Code-Hex/go-generics-cache"
+	"github.com/flexstack/uuid"
+	"github.com/tidwall/gjson"
 
-	"github.com/ferretcode/locomotive/internal/railway"
-	"github.com/ferretcode/locomotive/internal/railway/gql/queries"
-	"github.com/ferretcode/locomotive/internal/railway/gql/subscriptions"
+	"github.com/brody192/locomotive/internal/railway"
+	"github.com/brody192/locomotive/internal/railway/gql/queries"
 )
 
-var metadataDeploymentCache = cache.New[string, DeploymentHttpLogMetadata]()
+var metadataDeploymentCache = cache.New[uuid.UUID, DeploymentHttpLogMetadata]()
 
-func getMetadataForDeployment(ctx context.Context, g *railway.GraphQLClient, deploymentId string) (DeploymentHttpLogMetadata, error) {
+func getMetadataForDeployment(ctx context.Context, g *railway.GraphQLClient, deploymentId uuid.UUID) (DeploymentHttpLogMetadata, error) {
 	if cached, ok := metadataDeploymentCache.Get(deploymentId); ok {
 		return cached, nil
 	}
@@ -36,16 +38,16 @@ func getMetadataForDeployment(ctx context.Context, g *railway.GraphQLClient, dep
 
 	metadata := DeploymentHttpLogMetadata{}
 
-	metadata.ServiceName = deployment.Deployment.Service.Name
-	metadata.ServiceID = deployment.Deployment.Service.ID
+	metadata["service_name"] = deployment.Deployment.Service.Name
+	metadata["service_id"] = deployment.Deployment.Service.ID.String()
 
-	metadata.EnvironmentName = deployment.Deployment.Environment.Name
-	metadata.EnvironmentID = deployment.Deployment.Environment.ID
+	metadata["environment_name"] = deployment.Deployment.Environment.Name
+	metadata["environment_id"] = deployment.Deployment.Environment.ID.String()
 
-	metadata.ProjectName = deployment.Deployment.Service.Project.Name
-	metadata.ProjectID = deployment.Deployment.Service.Project.ID
+	metadata["project_name"] = deployment.Deployment.Service.Project.Name
+	metadata["project_id"] = deployment.Deployment.Service.Project.ID.String()
 
-	metadata.DeploymentID = deploymentId
+	metadata["deployment_id"] = deploymentId.String()
 
 	metadataDeploymentCache.Set(deploymentId, metadata, cache.WithExpiration((10 * time.Minute)))
 
@@ -53,45 +55,50 @@ func getMetadataForDeployment(ctx context.Context, g *railway.GraphQLClient, dep
 }
 
 // getTimeStampFromHttpLog is a helper function to get the timestamp from an HttpLog since we use the `any` type to keep it flexible
-func getTimeStampAttributeFromHttpLog(h subscriptions.HttpLog) (time.Time, error) {
-	log, ok := h.(map[string]any)
-	if !ok {
-		return time.Time{}, fmt.Errorf("HttpLog is not a map[string]any, got %T", h)
-	}
-
-	timestampStr, exists := log["timestamp"]
-	if !exists {
-		return time.Time{}, fmt.Errorf("timestamp field not found in HttpLog")
-	}
-
-	_, ok = timestampStr.(string)
-	if !ok {
-		return time.Time{}, fmt.Errorf("timestamp field is not a string, got %T", timestampStr)
-	}
-
-	t, err := time.Parse(time.RFC3339, timestampStr.(string))
+func getTimeStampAttributeFromHttpLog(h json.RawMessage) (time.Time, error) {
+	timestampStr, err := getStringAttributeFromHttpLog(h, "timestamp")
 	if err != nil {
-		return time.Time{}, fmt.Errorf("failed to parse timestamp '%s' as RFC3339 format: %w", timestampStr, err)
+		return time.Time{}, err
+	}
+
+	t, err := time.Parse(time.RFC3339Nano, timestampStr)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to parse timestamp '%s' as RFC3339Nano format: %w", timestampStr, err)
 	}
 
 	return t, nil
 }
 
-func getStringAttributeFromHttpLog(h subscriptions.HttpLog, attribute string) (string, error) {
-	log, ok := h.(map[string]any)
-	if !ok {
-		return "", fmt.Errorf("HttpLog is not a map[string]any, got %T", h)
+func getStringAttributeFromHttpLog(h json.RawMessage, attribute string) (string, error) {
+	if h == nil {
+		return "", fmt.Errorf("HttpLog is nil")
 	}
 
-	attributeValue, exists := log[attribute]
-	if !exists {
-		return "", fmt.Errorf("attribute %s not found in HttpLog", attribute)
+	r := gjson.GetBytes(h, attribute)
+	if !r.Exists() {
+		return "", fmt.Errorf("attribute %s not found in the http log", attribute)
 	}
 
-	_, ok = attributeValue.(string)
-	if !ok {
-		return "", fmt.Errorf("attribute %s is not a string, got %T", attribute, attributeValue)
+	if r.Type != gjson.String {
+		return "", fmt.Errorf("attribute %s is not a string in the http log", attribute)
 	}
 
-	return attributeValue.(string), nil
+	return r.String(), nil
+}
+
+func getInt64AttributeFromHttpLog(h json.RawMessage, attribute string) (int64, error) {
+	if h == nil {
+		return 0, fmt.Errorf("HttpLog is nil")
+	}
+
+	r := gjson.GetBytes(h, attribute)
+	if !r.Exists() {
+		return 0, fmt.Errorf("attribute %s not found in the http log", attribute)
+	}
+
+	if r.Type != gjson.Number {
+		return 0, fmt.Errorf("attribute %s is not a number in the http log", attribute)
+	}
+
+	return r.Int(), nil
 }

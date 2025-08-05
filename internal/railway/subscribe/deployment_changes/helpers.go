@@ -3,10 +3,11 @@ package deployment_changes
 import (
 	"slices"
 
-	"github.com/ferretcode/locomotive/internal/railway/gql/queries"
+	"github.com/brody192/locomotive/internal/railway/gql/queries"
+	"github.com/flexstack/uuid"
 )
 
-func findSuccessfulDeploymentsIdsForWantedServiceIds(environment *queries.EnvironmentData, wantedServiceIds []string) []DeploymentIdWithInfo {
+func findSuccessfulDeploymentsIdsForWantedServiceIds(environment *queries.EnvironmentData, wantedServiceIds []uuid.UUID) []DeploymentIdWithInfo {
 	successfulDeploymentsIdsForWantedServiceIds := []DeploymentIdWithInfo{}
 
 	for _, deployment := range environment.Environment.Deployments.Edges {

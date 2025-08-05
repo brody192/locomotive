@@ -8,14 +8,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/brody192/locomotive/internal/logger"
+	"github.com/brody192/locomotive/internal/railway"
+	"github.com/brody192/locomotive/internal/railway/gql/subscriptions"
+	"github.com/brody192/locomotive/internal/railway/subscribe"
 	"github.com/coder/websocket"
-	"github.com/ferretcode/locomotive/internal/logger"
-	"github.com/ferretcode/locomotive/internal/railway"
-	"github.com/ferretcode/locomotive/internal/railway/gql/subscriptions"
-	"github.com/ferretcode/locomotive/internal/railway/subscribe"
+	"github.com/flexstack/uuid"
 )
 
-func createEnvironmentLogSubscription(ctx context.Context, client *railway.GraphQLClient, environmentId string, serviceIds []string) (*websocket.Conn, error) {
+func createEnvironmentLogSubscription(ctx context.Context, client *railway.GraphQLClient, environmentId uuid.UUID, serviceIds []uuid.UUID) (*websocket.Conn, error) {
 	payload := &subscriptions.EnvironmentLogsSubscriptionPayload{
 		Query: subscriptions.EnvironmentLogsSubscription,
 		Variables: &subscriptions.EnvironmentLogsSubscriptionVariables{
@@ -32,7 +33,7 @@ func createEnvironmentLogSubscription(ctx context.Context, client *railway.Graph
 }
 
 // resubscribeWithRetry handles reconnection logic with retries and proper context cancellation
-func resubscribeServiceLogsWithRetry(ctx context.Context, client *railway.GraphQLClient, environmentId string, serviceIds []string, conn *websocket.Conn) (*websocket.Conn, error) {
+func resubscribeServiceLogsWithRetry(ctx context.Context, client *railway.GraphQLClient, environmentId uuid.UUID, serviceIds []uuid.UUID, conn *websocket.Conn) (*websocket.Conn, error) {
 	subscribe.SafeConnCloseNow(conn)
 
 	// Track total retry time with a maximum of 3600 seconds (1 hour)
@@ -69,7 +70,7 @@ func resubscribeServiceLogsWithRetry(ctx context.Context, client *railway.GraphQ
 	}
 }
 
-func SubscribeToServiceLogs(ctx context.Context, g *railway.GraphQLClient, logTrack chan<- []EnvironmentLogWithMetadata, environmentId string, serviceIds []string) error {
+func SubscribeToServiceLogs(ctx context.Context, g *railway.GraphQLClient, logTrack chan<- []EnvironmentLogWithMetadata, environmentId uuid.UUID, serviceIds []uuid.UUID) error {
 	metadataMap, err := getMetadataMapForEnvironment(ctx, g.Client, environmentId)
 	if err != nil {
 		return fmt.Errorf("error getting metadata map: %w", err)
@@ -160,18 +161,18 @@ func SubscribeToServiceLogs(ctx context.Context, g *railway.GraphQLClient, logTr
 
 			filteredLogs = append(filteredLogs, EnvironmentLogWithMetadata{
 				Log: logs.Payload.Data.EnvironmentLogs[i],
-				Metadata: EnvironmentLogMetadata{
-					ProjectName: projectName,
-					ProjectID:   logs.Payload.Data.EnvironmentLogs[i].Tags.ProjectID,
+				Metadata: map[string]string{
+					"project_name": projectName,
+					"project_id":   logs.Payload.Data.EnvironmentLogs[i].Tags.ProjectID.String(),
 
-					EnvironmentName: environmentName,
-					EnvironmentID:   logs.Payload.Data.EnvironmentLogs[i].Tags.EnvironmentID,
+					"environment_name": environmentName,
+					"environment_id":   logs.Payload.Data.EnvironmentLogs[i].Tags.EnvironmentID.String(),
 
-					ServiceName: serviceName,
-					ServiceID:   logs.Payload.Data.EnvironmentLogs[i].Tags.ServiceID,
+					"service_name": serviceName,
+					"service_id":   logs.Payload.Data.EnvironmentLogs[i].Tags.ServiceID.String(),
 
-					DeploymentID:         logs.Payload.Data.EnvironmentLogs[i].Tags.DeploymentID,
-					DeploymentInstanceId: logs.Payload.Data.EnvironmentLogs[i].Tags.DeploymentInstanceID,
+					"deployment_id":          logs.Payload.Data.EnvironmentLogs[i].Tags.DeploymentID.String(),
+					"deployment_instance_id": logs.Payload.Data.EnvironmentLogs[i].Tags.DeploymentInstanceID.String(),
 				},
 			})
 		}

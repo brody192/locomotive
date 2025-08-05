@@ -1,12 +1,14 @@
 package subscriptions
 
+import "github.com/flexstack/uuid"
+
 type CanvasInvalidationSubscriptionPayload struct {
 	Query     string                                   `json:"query"`
 	Variables *CanvasInvalidationSubscriptionVariables `json:"variables"`
 }
 
 type CanvasInvalidationSubscriptionVariables struct {
-	EnvironmentId string `json:"environmentId"`
+	EnvironmentId uuid.UUID `json:"environmentId"`
 }
 
 type CanvasInvalidationData struct {

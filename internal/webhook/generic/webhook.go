@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"slices"
 
-	"github.com/ferretcode/locomotive/internal/config"
-	"github.com/ferretcode/locomotive/internal/logline/reconstructor/reconstruct_json"
-	"github.com/ferretcode/locomotive/internal/railway/subscribe/environment_logs"
-	"github.com/ferretcode/locomotive/internal/railway/subscribe/http_logs"
+	"github.com/brody192/locomotive/internal/config"
+	"github.com/brody192/locomotive/internal/railway/subscribe/environment_logs"
+	"github.com/brody192/locomotive/internal/railway/subscribe/http_logs"
 )
 
 var acceptedStatusCodes = []int{
@@ -20,32 +20,37 @@ var acceptedStatusCodes = []int{
 	http.StatusCreated,
 }
 
-func SendWebhookForDeployLogs(logs []environment_logs.EnvironmentLogWithMetadata, cfg *config.Config, client *http.Client) error {
-	jsonLogs, err := reconstruct_json.EnvironmentLogLinesJson(logs)
+func SendWebhookForDeployLogs(logs []environment_logs.EnvironmentLogWithMetadata, client *http.Client) error {
+	payload, err := config.WebhookModeToConfig[config.Global.WebhookMode].EnvironmentLogReconstructorFunc(logs)
 	if err != nil {
 		return fmt.Errorf("failed to reconstruct deploy log lines: %w", err)
 	}
 
-	return SendRawWebhook(jsonLogs, cfg.IngestUrl, cfg.AdditionalHeaders, client)
+	return sendRawWebhook(payload, config.Global.WebhookUrl, config.Global.AdditionalHeaders, client)
 }
 
-func SendWebhookForHttpLogs(logs []http_logs.DeploymentHttpLogWithMetadata, cfg *config.Config, client *http.Client) error {
-	jsonLogs, err := reconstruct_json.HttpLogLinesJson(logs)
+func SendWebhookForHttpLogs(logs []http_logs.DeploymentHttpLogWithMetadata, client *http.Client) error {
+	payload, err := config.WebhookModeToConfig[config.Global.WebhookMode].HTTPLogReconstructorFunc(logs)
 	if err != nil {
 		return fmt.Errorf("failed to reconstruct http log lines: %w", err)
 	}
 
-	return SendRawWebhook(jsonLogs, cfg.IngestUrl, cfg.AdditionalHeaders, client)
+	return sendRawWebhook(payload, config.Global.WebhookUrl, config.Global.AdditionalHeaders, client)
 }
 
-func SendRawWebhook(logs []byte, url string, additionalHeaders map[string]string, client *http.Client) error {
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(logs))
+func sendRawWebhook(logs []byte, url url.URL, additionalHeaders config.AdditionalHeaders, client *http.Client) error {
+	req, err := http.NewRequest(http.MethodPost, url.String(), bytes.NewReader(logs))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
+	// Default headers
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Keep-Alive", "timeout=5, max=1000")
+
+	for key, value := range config.WebhookModeToConfig[config.Global.WebhookMode].Headers {
+		req.Header.Set(key, value)
+	}
 
 	for key, value := range additionalHeaders {
 		req.Header.Set(key, value)

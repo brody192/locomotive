@@ -2,6 +2,8 @@ package subscriptions
 
 import (
 	"time"
+
+	"github.com/flexstack/uuid"
 )
 
 type EnvironmentLogsSubscriptionPayload struct {
@@ -10,10 +12,10 @@ type EnvironmentLogsSubscriptionPayload struct {
 }
 
 type EnvironmentLogsSubscriptionVariables struct {
-	EnvironmentId string `json:"environmentId"`
-	Filter        string `json:"filter"`
-	BeforeLimit   int64  `json:"beforeLimit"`
-	BeforeDate    string `json:"beforeDate"`
+	EnvironmentId uuid.UUID `json:"environmentId"`
+	Filter        string    `json:"filter"`
+	BeforeLimit   int64     `json:"beforeLimit"`
+	BeforeDate    string    `json:"beforeDate"`
 }
 
 type EnvironmentLogsData struct {
@@ -30,11 +32,11 @@ type EnvironmentLog struct {
 	Message   string    `json:"message"`
 	Severity  string    `json:"severity"`
 	Tags      struct {
-		ProjectID            string `json:"projectId"`
-		EnvironmentID        string `json:"environmentId"`
-		ServiceID            string `json:"serviceId"`
-		DeploymentID         string `json:"deploymentId"`
-		DeploymentInstanceID string `json:"deploymentInstanceId"`
+		ProjectID            uuid.UUID `json:"projectId"`
+		EnvironmentID        uuid.UUID `json:"environmentId"`
+		ServiceID            uuid.UUID `json:"serviceId"`
+		DeploymentID         uuid.UUID `json:"deploymentId"`
+		DeploymentInstanceID uuid.UUID `json:"deploymentInstanceId"`
 	}
 	Attributes []EnvironmentLogAttributes `json:"attributes"`
 }

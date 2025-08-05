@@ -1,12 +1,6 @@
 package railway
 
-import (
-	"github.com/hasura/go-graphql-client"
+var (
+	connectionInit = []byte(`{"type":"connection_init"}`)
+	connectionAck  = []byte(`{"type":"connection_ack"}`)
 )
-
-type GraphQLClient struct {
-	AuthToken           string
-	BaseSubscriptionURL string
-	BaseURL             string
-	Client              *graphql.Client
-}

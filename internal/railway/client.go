@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/flexstack/uuid"
 	"github.com/hasura/go-graphql-client"
 )
 
@@ -12,7 +13,7 @@ func NewClient(gqlConfig *GraphQLClient) (*GraphQLClient, error) {
 		return nil, errors.New("gqlConfig must not be nil")
 	}
 
-	if gqlConfig.AuthToken == "" {
+	if gqlConfig.AuthToken == uuid.Nil {
 		return nil, errors.New("auth token must not be empty")
 	}
 

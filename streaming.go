@@ -6,14 +6,15 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ferretcode/locomotive/internal/logger"
-	"github.com/ferretcode/locomotive/internal/railway"
-	"github.com/ferretcode/locomotive/internal/railway/subscribe/environment_logs"
-	"github.com/ferretcode/locomotive/internal/railway/subscribe/http_logs"
+	"github.com/brody192/locomotive/internal/logger"
+	"github.com/brody192/locomotive/internal/railway"
+	"github.com/brody192/locomotive/internal/railway/subscribe/environment_logs"
+	"github.com/brody192/locomotive/internal/railway/subscribe/http_logs"
+	"github.com/flexstack/uuid"
 	"github.com/sethvargo/go-retry"
 )
 
-func startStreamingDeployLogs(ctx context.Context, gqlClient *railway.GraphQLClient, serviceLogTrack chan []environment_logs.EnvironmentLogWithMetadata, environmentId string, serviceIds []string) error {
+func startStreamingDeployLogs(ctx context.Context, gqlClient *railway.GraphQLClient, serviceLogTrack chan []environment_logs.EnvironmentLogWithMetadata, environmentId uuid.UUID, serviceIds []uuid.UUID) error {
 	b := retry.NewFibonacci(100 * time.Millisecond)
 	b = retry.WithCappedDuration((5 * time.Second), b)
 	b = retry.WithMaxRetries(10, b)
@@ -37,7 +38,7 @@ func startStreamingDeployLogs(ctx context.Context, gqlClient *railway.GraphQLCli
 	return nil
 }
 
-func startStreamingHttpLogs(ctx context.Context, gqlClient *railway.GraphQLClient, httpLogTrack chan []http_logs.DeploymentHttpLogWithMetadata, environmentId string, serviceIds []string) error {
+func startStreamingHttpLogs(ctx context.Context, gqlClient *railway.GraphQLClient, httpLogTrack chan []http_logs.DeploymentHttpLogWithMetadata, environmentId uuid.UUID, serviceIds []uuid.UUID) error {
 	b := retry.NewFibonacci(100 * time.Millisecond)
 	b = retry.WithCappedDuration((5 * time.Second), b)
 	b = retry.WithMaxRetries(10, b)

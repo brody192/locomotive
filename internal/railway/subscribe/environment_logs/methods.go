@@ -2,21 +2,20 @@ package environment_logs
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"time"
 
 	cache "github.com/Code-Hex/go-generics-cache"
 
-	"github.com/ferretcode/locomotive/internal/railway/gql/queries"
-	"github.com/ferretcode/locomotive/internal/railway/gql/subscriptions"
-	"github.com/ferretcode/locomotive/internal/util"
+	"github.com/brody192/locomotive/internal/railway/gql/queries"
+	"github.com/brody192/locomotive/internal/railway/gql/subscriptions"
+	"github.com/flexstack/uuid"
 	"github.com/hasura/go-graphql-client"
 )
 
-var metadataEnvironmentCache = cache.New[string, map[string]string]()
+var metadataEnvironmentCache = cache.New[uuid.UUID, map[uuid.UUID]string]()
 
-func getMetadataMapForEnvironment(ctx context.Context, g *graphql.Client, environmentId string) (map[string]string, error) {
+func getMetadataMapForEnvironment(ctx context.Context, g *graphql.Client, environmentId uuid.UUID) (map[uuid.UUID]string, error) {
 	metadataMap, ok := metadataEnvironmentCache.Get(environmentId)
 	if ok {
 		return metadataMap, nil
@@ -46,7 +45,7 @@ func getMetadataMapForEnvironment(ctx context.Context, g *graphql.Client, enviro
 		return nil, err
 	}
 
-	idToNameMap := make(map[string]string)
+	idToNameMap := make(map[uuid.UUID]string)
 
 	for _, e := range project.Project.Environments.Edges {
 		idToNameMap[e.Node.ID] = e.Node.Name
@@ -74,28 +73,4 @@ func AttributesHasKeys(attributes []subscriptions.EnvironmentLogAttributes, keys
 	}
 
 	return "", false
-}
-
-func FilterLogs(logs []EnvironmentLogWithMetadata, wantedLevel []string, contentFilter string) []EnvironmentLogWithMetadata {
-	if len(wantedLevel) == 0 && contentFilter == "" {
-		return logs
-	}
-
-	filteredLogs := []EnvironmentLogWithMetadata{}
-
-	for i := range logs {
-		if !util.IsWantedLevel(wantedLevel, logs[i].Log.Severity) {
-			continue
-		}
-
-		// Convert log to JSON string for content filtering
-		logJSON, _ := json.Marshal(logs[i])
-		if !util.MatchesContentFilter(contentFilter, string(logJSON)) {
-			continue
-		}
-
-		filteredLogs = append(filteredLogs, logs[i])
-	}
-
-	return filteredLogs
 }

@@ -3,17 +3,9 @@ package util
 import (
 	"fmt"
 	"regexp"
-	"strconv"
 	"strings"
+	"unicode"
 )
-
-func QuoteIfNeeded(s string) string {
-	if len(s) > 1 && (s[0] == '"' && s[len(s)-1] == '"') {
-		return s
-	}
-
-	return strconv.Quote(s)
-}
 
 func ByteCountIEC(b uint64) string {
 	const unit = 1024
@@ -32,43 +24,25 @@ func ByteCountIEC(b uint64) string {
 	return fmt.Sprintf("%.2f %ciB", float64(b)/float64(div), "KMGTPE"[exp])
 }
 
-// checks if the current level is within the wanted slice via a case insensitive comparison.
-//
-// an empty wanted level slice is the same as specifying all levels.
-func IsWantedLevel(wanted []string, current string) bool {
-	// specifying no wanted level will default to all levels, return true
-	if len(wanted) == 0 {
-		return true
-	}
+func SanitizeString(input string) string {
+	var result strings.Builder
 
-	// expand 'err' to 'error'
-	if current == "err" {
-		current = "error"
-	}
-
-	// loop through wanted levels searching via a case insensitive match for either 'ALL' or the current level
-	for i := range wanted {
-		if strings.EqualFold(wanted[i], "ALL") || strings.EqualFold(wanted[i], current) {
-			return true
+	for _, char := range input {
+		if unicode.IsLetter(char) || unicode.IsDigit(char) {
+			result.WriteRune(unicode.ToLower(char))
+		} else {
+			result.WriteRune('-')
 		}
 	}
 
-	return false
-}
-
-// New function to check if a log matches the content filter
-func MatchesContentFilter(filter string, logContent string) bool {
-	if filter == "" {
-		return true
+	sanitized := result.String()
+	for strings.Contains(sanitized, "--") {
+		sanitized = strings.ReplaceAll(sanitized, "--", "-")
 	}
 
-	re, err := regexp.Compile(filter)
-	if err != nil {
-		// If the regex is invalid, treat it as a plain text search
-		return strings.Contains(logContent, filter)
-	}
+	sanitized = strings.Trim(sanitized, "-")
 
-	return re.MatchString(logContent)
+	return sanitized
 }
 
 // https://github.com/acarl005/stripansi/blob/master/stripansi.go

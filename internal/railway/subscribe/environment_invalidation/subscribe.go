@@ -7,14 +7,15 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/brody192/locomotive/internal/logger"
+	"github.com/brody192/locomotive/internal/railway"
+	"github.com/brody192/locomotive/internal/railway/gql/subscriptions"
+	"github.com/brody192/locomotive/internal/railway/subscribe"
 	"github.com/coder/websocket"
-	"github.com/ferretcode/locomotive/internal/logger"
-	"github.com/ferretcode/locomotive/internal/railway"
-	"github.com/ferretcode/locomotive/internal/railway/gql/subscriptions"
-	"github.com/ferretcode/locomotive/internal/railway/subscribe"
+	"github.com/flexstack/uuid"
 )
 
-func createInvalidationRequestSubscription(ctx context.Context, g *railway.GraphQLClient, environmentId string) (*websocket.Conn, error) {
+func createInvalidationRequestSubscription(ctx context.Context, g *railway.GraphQLClient, environmentId uuid.UUID) (*websocket.Conn, error) {
 	payload := &subscriptions.CanvasInvalidationSubscriptionPayload{
 		Query: subscriptions.CanvasInvalidationSubscription,
 		Variables: &subscriptions.CanvasInvalidationSubscriptionVariables{
@@ -26,7 +27,7 @@ func createInvalidationRequestSubscription(ctx context.Context, g *railway.Graph
 }
 
 // resubscribeWithRetry handles reconnection logic with retries and proper context cancellation
-func resubscribeWithRetry(ctx context.Context, g *railway.GraphQLClient, environmentId string, conn *websocket.Conn) (*websocket.Conn, error) {
+func resubscribeWithRetry(ctx context.Context, g *railway.GraphQLClient, environmentId uuid.UUID, conn *websocket.Conn) (*websocket.Conn, error) {
 	subscribe.SafeConnCloseNow(conn)
 
 	// Track total retry time with a maximum of 3600 seconds (1 hour)
@@ -63,7 +64,7 @@ func resubscribeWithRetry(ctx context.Context, g *railway.GraphQLClient, environ
 	}
 }
 
-func SubscribeToInvalidationRequests(ctx context.Context, g *railway.GraphQLClient, environmentHashTrack chan<- string, environmentId string) error {
+func SubscribeToInvalidationRequests(ctx context.Context, g *railway.GraphQLClient, environmentHashTrack chan<- string, environmentId uuid.UUID) error {
 	conn, err := createInvalidationRequestSubscription(ctx, g, environmentId)
 	if err != nil {
 		return err
@@ -77,7 +78,7 @@ func SubscribeToInvalidationRequests(ctx context.Context, g *railway.GraphQLClie
 		_, payload, err := subscribe.SafeConnRead(conn, ctx)
 		if err != nil {
 			logger.Stdout.Debug("resubscribing",
-				slog.String("from", "SubscribeToInvalidationRequests"),
+				slog.String("from", "SubscribeToInvalidationRequests_SafeConnRead"),
 				logger.ErrAttr(err),
 			)
 
@@ -96,7 +97,11 @@ func SubscribeToInvalidationRequests(ctx context.Context, g *railway.GraphQLClie
 		}
 
 		if invalidationRequest.Type != subscriptions.SubscriptionTypeNext || invalidationRequest.Type == subscriptions.SubscriptionTypeComplete {
-			// logger.Stdout.Debug("resubscribing", slog.String("err", fmt.Sprintf("log type not next: %s", invalidationRequest.Type)))
+			logger.Stdout.Debug("resubscribing",
+				slog.String("from", "SubscribeToInvalidationRequests_TypeNotNext"),
+				logger.ErrAttr(fmt.Errorf("log type not next: %s", invalidationRequest.Type)),
+			)
+
 			conn, err = resubscribeWithRetry(ctx, g, environmentId, conn)
 			if err != nil {
 				return err

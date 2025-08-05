@@ -1,20 +1,24 @@
 package queries
 
-import "time"
+import (
+	"time"
+
+	"github.com/flexstack/uuid"
+)
 
 type EnvironmentData struct {
 	Environment struct {
 		Deployments struct {
 			Edges []struct {
 				Node struct {
-					ServiceID string    `json:"serviceId"`
-					ProjectID string    `json:"projectId"`
+					ServiceID uuid.UUID `json:"serviceId"`
+					ProjectID uuid.UUID `json:"projectId"`
 					Status    string    `json:"status"`
 					CreatedAt time.Time `json:"createdAt"`
-					ID        string    `json:"id"`
+					ID        uuid.UUID `json:"id"`
 				} `json:"node"`
 			} `json:"edges"`
 		} `json:"deployments"`
-		ProjectID string `json:"projectId"`
+		ProjectID uuid.UUID `json:"projectId"`
 	} `json:"environment"`
 }

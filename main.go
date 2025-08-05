@@ -6,36 +6,19 @@ import (
 	"os"
 	"sync/atomic"
 
-	"github.com/ferretcode/locomotive/internal/config"
-	"github.com/ferretcode/locomotive/internal/errgroup"
-	"github.com/ferretcode/locomotive/internal/logger"
-	"github.com/ferretcode/locomotive/internal/railway"
-	"github.com/ferretcode/locomotive/internal/railway/subscribe/environment_logs"
-	"github.com/ferretcode/locomotive/internal/railway/subscribe/http_logs"
+	"github.com/brody192/locomotive/internal/config"
+	"github.com/brody192/locomotive/internal/errgroup"
+	"github.com/brody192/locomotive/internal/logger"
+	"github.com/brody192/locomotive/internal/railway"
+	"github.com/brody192/locomotive/internal/railway/subscribe/environment_logs"
+	"github.com/brody192/locomotive/internal/railway/subscribe/http_logs"
 )
 
 func main() {
-	cfg, err := config.GetConfig()
-	if err != nil {
-		logger.Stderr.Error("error parsing config", logger.ErrAttr(err))
-		os.Exit(1)
-	}
-
-	if !cfg.EnableHttpLogs {
-		logger.Stdout.Info("HTTP logs shipping is disabled. To enable it, set \"ENABLE_HTTP_LOGS=true\" as a service variable")
-	}
-
-	if !cfg.EnableDeployLogs {
-		logger.Stdout.Info("Deploy logs shipping is disabled. To enable it, set \"ENABLE_DEPLOY_LOGS=true\" as a service variable")
-	}
-
-	logger.Stdout.Info("Starting the locomotive...",
-		slog.Any("service_ids", cfg.Train),
-		slog.String("environment_id", cfg.EnvironmentId),
-	)
+	logger.Stdout.Info("Preparing the locomotive for departure...")
 
 	gqlClient, err := railway.NewClient(&railway.GraphQLClient{
-		AuthToken:           cfg.RailwayApiKey,
+		AuthToken:           config.Global.RailwayApiKey,
 		BaseURL:             "https://backboard.railway.app/graphql/v2",
 		BaseSubscriptionURL: "wss://backboard.railway.app/graphql/internal",
 	})
@@ -43,6 +26,29 @@ func main() {
 		logger.Stderr.Error("error creating graphql client", logger.ErrAttr(err))
 		os.Exit(1)
 	}
+
+	servicesExist, missingServices, err := railway.VerifyAllServicesExistWithinEnvironment(gqlClient, config.Global.ServiceIds, config.Global.EnvironmentId)
+	if err != nil {
+		logger.Stderr.Error("error verifying if services exist within the environment", logger.ErrAttr(err))
+		os.Exit(1)
+	}
+
+	if !servicesExist {
+		logger.Stderr.Error("all services must exist within the environment set by the LOCOMOTIVE_ENVIRONMENT_ID variable",
+			slog.Any("missing_service_ids", missingServices),
+			slog.Any("configured_service_ids", config.Global.ServiceIds),
+			slog.Any("environment_id", config.Global.EnvironmentId),
+		)
+		os.Exit(1)
+	}
+
+	logger.Stdout.Info("The locomotive is ready to depart...",
+		slog.Any("service_ids", config.Global.ServiceIds),
+		slog.Any("environment_id", config.Global.EnvironmentId),
+		slog.Any("webhook_mode", config.Global.WebhookMode),
+		slog.Bool("enable_http_logs", config.Global.EnableHttpLogs),
+		slog.Bool("enable_deploy_logs", config.Global.EnableDeployLogs),
+	)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -53,27 +59,29 @@ func main() {
 	deployLogsProcessed := atomic.Int64{}
 	httpLogsProcessed := atomic.Int64{}
 
-	reportStatusAsync(cfg, &deployLogsProcessed, &httpLogsProcessed)
+	reportStatusAsync(&deployLogsProcessed, &httpLogsProcessed)
 
-	handleDeployLogsAsync(ctx, cfg, &deployLogsProcessed, serviceLogTrack)
-	handleHttpLogsAsync(ctx, cfg, &httpLogsProcessed, httpLogTrack)
+	handleDeployLogsAsync(ctx, &deployLogsProcessed, serviceLogTrack)
+	handleHttpLogsAsync(ctx, &httpLogsProcessed, httpLogTrack)
 
 	errGroup := errgroup.NewErrGroup()
 
 	errGroup.Go(func() error {
-		if cfg.EnableDeployLogs {
-			return startStreamingDeployLogs(ctx, gqlClient, serviceLogTrack, cfg.EnvironmentId, cfg.Train)
+		if !config.Global.EnableDeployLogs {
+			logger.Stdout.Info("Deploy log transport is disabled. To enable it, set LOCOMOTIVE_ENABLE_DEPLOY_LOGS=true")
+			return nil
 		}
 
-		return nil
+		return startStreamingDeployLogs(ctx, gqlClient, serviceLogTrack, config.Global.EnvironmentId, config.Global.ServiceIds)
 	})
 
 	errGroup.Go(func() error {
-		if cfg.EnableHttpLogs {
-			return startStreamingHttpLogs(ctx, gqlClient, httpLogTrack, cfg.EnvironmentId, cfg.Train)
+		if !config.Global.EnableHttpLogs {
+			logger.Stdout.Info("HTTP log transport is disabled. To enable it, set LOCOMOTIVE_ENABLE_HTTP_LOGS=true")
+			return nil
 		}
 
-		return nil
+		return startStreamingHttpLogs(ctx, gqlClient, httpLogTrack, config.Global.EnvironmentId, config.Global.ServiceIds)
 	})
 
 	logger.Stdout.Info("The locomotive is waiting for cargo...")

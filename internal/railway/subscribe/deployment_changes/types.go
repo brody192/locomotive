@@ -1,8 +1,12 @@
 package deployment_changes
 
-import "time"
+import (
+	"time"
+
+	"github.com/flexstack/uuid"
+)
 
 type DeploymentIdWithInfo struct {
-	ID        string
+	ID        uuid.UUID
 	CreatedAt time.Time
 }

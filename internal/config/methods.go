@@ -3,8 +3,6 @@ package config
 import (
 	"fmt"
 	"strings"
-
-	"github.com/google/uuid"
 )
 
 func (h *AdditionalHeaders) UnmarshalText(envByte []byte) error {
@@ -15,7 +13,7 @@ func (h *AdditionalHeaders) UnmarshalText(envByte []byte) error {
 	envString := string(envByte)
 	headers := make(map[string]string)
 
-	headerPairs := strings.SplitN(envString, ";", 2)
+	headerPairs := strings.Split(envString, ";")
 
 	for _, header := range headerPairs {
 		keyValue := strings.SplitN(header, "=", 2)
@@ -32,28 +30,12 @@ func (h *AdditionalHeaders) UnmarshalText(envByte []byte) error {
 	return nil
 }
 
-func (t *Trains) UnmarshalText(envByte []byte) error {
-	if t == nil {
-		return fmt.Errorf("Train is nil")
+func (h *AdditionalHeaders) Keys() []string {
+	keys := make([]string, 0, len(*h))
+
+	for key := range *h {
+		keys = append(keys, key)
 	}
 
-	envString := string(envByte)
-
-	trains := strings.Split(envString, ",")
-
-	for _, train := range trains {
-		train = strings.TrimSpace(train)
-
-		if train == "" {
-			continue
-		}
-
-		if _, err := uuid.Parse(train); err != nil {
-			return fmt.Errorf("invalid train: \"%s\"; must be a valid uuid", train)
-		}
-
-		*t = append(*t, train)
-	}
-
-	return nil
+	return keys
 }

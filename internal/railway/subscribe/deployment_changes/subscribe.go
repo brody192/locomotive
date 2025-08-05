@@ -7,15 +7,16 @@ import (
 	"log/slog"
 	"slices"
 
-	"github.com/ferretcode/locomotive/internal/railway/subscribe/environment_invalidation"
+	"github.com/brody192/locomotive/internal/railway/subscribe/environment_invalidation"
+	"github.com/flexstack/uuid"
 
-	"github.com/ferretcode/locomotive/internal/logger"
-	"github.com/ferretcode/locomotive/internal/railway"
-	"github.com/ferretcode/locomotive/internal/railway/gql/queries"
-	"github.com/ferretcode/locomotive/internal/slice"
+	"github.com/brody192/locomotive/internal/logger"
+	"github.com/brody192/locomotive/internal/railway"
+	"github.com/brody192/locomotive/internal/railway/gql/queries"
+	"github.com/brody192/locomotive/internal/slice"
 )
 
-func SubscribeToDeploymentIdChanges(ctx context.Context, g *railway.GraphQLClient, deploymentIdSlice *slice.Sync[DeploymentIdWithInfo], changeDetected chan<- struct{}, environmentId string, serviceIds []string) error {
+func SubscribeToDeploymentIdChanges(ctx context.Context, g *railway.GraphQLClient, deploymentIdSlice *slice.Sync[DeploymentIdWithInfo], changeDetected chan<- struct{}, environmentId uuid.UUID, serviceIds []uuid.UUID) error {
 	environment := &queries.EnvironmentData{}
 
 	variables := map[string]any{

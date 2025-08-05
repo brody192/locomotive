@@ -1,381 +1,226 @@
 # locomotive
 
-A Railway sidecar service for sending webhook events when new logs are received. Supports Discord, Datadog, Axiom, BetterStack and more!
+A Railway sidecar service for sending webhook events when new logs are received.
+
+Nearly equivelant to Heroku's log drain, but for Railway.
+
+With tailored support for:
+
+- Datadog
+- Axiom
+- BetterStack
+- Loki
+- Sentry
+- Papertrail
+
+And more with the standard JSON and JSON Lines modes.
 
 ## Configuration
 
 Configuration is done through environment variables. See explanation and examples below.
 
-## Webhook Log Format Examples
-
-**These are examples of what the body would look like in the POST request done by locomotive**
-<details>
-<summary>Deploy Logs</summary>
-
-<details>
-<summary>Plaintext Deploy Logs</summary>
-
-```json
-[
-    {
-        "_metadata": {
-            "deploymentId": "577e2cf2-a1fc-4e0f-b352-2780bca73a94",
-            "deploymentInstanceId": "bbdc4e76-7600-415f-9f6b-e425311cec51",
-            "environmentId": "b5ce7ab5-96f1-4fa3-929b-fc883f89cbd1",
-            "environmentName": "production",
-            "projectId": "8a6502bf-6479-440c-a14f-78ecd52abf09",
-            "projectName": "Railyard",
-            "serviceId": "24335e07-e68b-498f-bc9e-1b9146436867",
-            "serviceName": "Autorack"
-        },
-        "message": "Hello, World!",
-        "level": "info",
-        "severity": "info",
-        "time": "2020-05-22T21:27:33Z",
-        "_time": "2020-05-22T21:27:33Z",
-        "dt": "2020-05-22T21:27:33Z",
-        "datetime": "2020-05-22T21:27:33Z",
-        "ts": "2020-05-22T21:27:33Z",
-        "timestamp": "2020-05-22T21:27:33Z"
-    }
-]
-```
-</details>
-
-<details>
-<summary>Structured JSON Deploy Logs</summary>
-
-For Structured JSON Deploy Logs
-
-```json
-[
-    {
-        "_metadata": {
-            "deploymentId": "5b7c81b35-1578-4eb8-8498-44f4f517b263",
-            "deploymentInstanceId": "46cda6d4-f76c-45cb-8642-c7265949e497",
-            "environmentId": "b5ce7ab5-96f1-4fa3-929b-fc883f89cbd1",
-            "environmentName": "production",
-            "projectId": "8a6502bf-6479-440c-a14f-78ecd52abf09",
-            "projectName": "Railyard",
-            "serviceId": "55b1755f-f2c6-4f24-8d51-0ed3754b253e",
-            "serviceName": "Superliner"
-        },
-        "level": "info",
-        "severity": "info",
-        "message": "Hello, World!",
-        "example_string": "foo bar",
-        "example_int": 12345678,
-        "example_float": 1.2345678,
-        "example_int_slice": [123, 456, 789],
-        "example_string_slice": ["hello", "world"],
-        "example_group": {
-            "example_grouped_int": 12345678,
-            "example_grouped_string": "Hello, World!"
-        },
-        "time": "2020-05-22T21:27:33Z",
-        "_time": "2020-05-22T21:27:33Z",
-        "dt": "2020-05-22T21:27:33Z",
-        "datetime": "2020-05-22T21:27:33Z",
-        "ts": "2020-05-22T21:27:33Z",
-        "timestamp": "2020-05-22T21:27:33Z"
-    }
-]
-```
-</details>
-
-<details>
-<summary>Grafana Loki Plaintext Deploy Logs Example</summary>
-
-Grafana Loki Plaintext Deploy Logs Example
-
-```json
-{
-    "streams": [
-        {
-            "stream": {
-                "deployment_id": "fb8172c8-a65d-48a4-9d1e-9d5ef986c9c3",
-                "deployment_instance_id": "25dfeb9b-0097-4f91-820b-5dccc5009b1d",
-                "project_id": "dce92382-c4e4-4923-bacd-3a5f7bcab337",
-                "project_name": "Union Pacific Freight",
-                "environment_id": "57d88ccb-8db9-4aef-957e-ecd94c41fdf8",
-                "environment_name": "production",
-                "service_id": "aa8ce660-dad0-4f7d-8921-46295d180c09",
-                "service_name": "Dash 8",
-                "severity": "error",
-                "level": "error"
-            },
-            "values": [["1590182853000000000", "a plaintext message", {}]]
-        }
-    ]
-}
-```
-</details>
-
-<details>
-<summary>Grafana Loki Structured Deploy Logs Example</summary>
-
-Grafana Loki Structured Deploy Logs Example
-
-```json
-{
-    "streams": [
-        {
-            "stream": {
-                "deployment_id": "fb8172c8-a65d-48a4-9d1e-9d5ef986c9c3",
-                "deployment_instance_id": "25dfeb9b-0097-4f91-820b-5dccc5009b1d",
-                "project_id": "dce92382-c4e4-4923-bacd-3a5f7bcab337",
-                "project_name": "Union Pacific Freight",
-                "environment_id": "57d88ccb-8db9-4aef-957e-ecd94c41fdf8",
-                "environment_name": "production",
-                "service_id": "aa8ce660-dad0-4f7d-8921-46295d180c09",
-                "service_name": "Dash 8",
-                "severity": "error",
-                "level": "error"
-            },
-            "values": [
-                [
-                    "1590182853000000000",
-                    "hello, world",
-                    {
-                        "float": "10.51",
-                        "number": "10",
-                        "string_value": "hello world",
-                        "user": "null"
-                    }
-                ]
-            ]
-        }
-    ]
-}
-```
-</details>
-</details>
-
-<details>
-<summary>HTTP Logs</summary>
-
-<details>
-<summary>HTTP Logs For Generic Webhooks</summary>
-
-```json
-[
-   {
-      "_metadata":{
-         "projectId":"bbd37ec6-1a5f-41bc-8461-910dffb30b1e",
-         "projectName":"Railway",
-         "environmentId":"681108cd-bbc6-49ac-a571-446cbbc2c6fe",
-         "environmentName":"production",
-         "serviceId":"f14f6e00-4d4e-448c-b526-79c358fc6ac0",
-         "serviceName":"Frontend Railpack",
-         "deploymentId":"ed5c3ddf-c333-4407-858d-58e6c5765066"
-      },
-      "clientUa":"Mozilla/5.0 (Macintosh; Intel Mac OS X 15_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.4 Safari/605.1.15",
-      "downstreamProto":"HTTP/2.0",
-      "edgeRegion":"us-east4-eqdc4a",
-      "host":"railway.com",
-      "httpStatus":200,
-      "method":"GET",
-      "path":"/dashboard",
-      "requestId":"SMy7Drs-RcGXiaSg4a9AQ",
-      "responseDetails":"",
-      "rxBytes":4176,
-      "srcIp":"66.33.22.11",
-      "totalDuration":477,
-      "txBytes":22453,
-      "upstreamAddress":"http://[fd12:74d7:7e85:0:1000:34:be32:e1aa]:8080",
-      "upstreamProto":"HTTP/1.1",
-      "upstreamRqDuration":420,
-      "message":"/dashboard",
-      "timestamp":"2020-05-22T21:27:33Z",
-      "time":"2020-05-22T21:27:33Z",
-      "_time":"2020-05-22T21:27:33Z",
-      "ts":"2020-05-22T21:27:33Z",
-      "datetime":"2020-05-22T21:27:33Z",
-      "dt":"2020-05-22T21:27:33Z"
-   }
-]
-```
-
-</details>
-
-<details>
-<summary>HTTP Logs For Loki</summary>
-
-```json
-{
-   "streams":[
-      {
-         "stream":{
-            "project_name":"Railway",
-            "environment_id":"5cd7a403-45d9-4303-9de4-71bcfc7d2bf2",
-            "environment_name":"production",
-            "service_id":"3100de87-d044-4991-9c18-7a23e49c3927",
-            "service_name":"Frontend Railpack",
-            "deployment_id":"7d7426b1-0bd6-4b5e-8193-7f7a67160798",
-            "project_id":"8ab20430-761a-4d60-9b39-772a514d928a"
-         },
-         "values":[
-            [
-               "1590182853000000000",
-               "/dashboard",
-               {
-                  "clientUa":"Mozilla/5.0 (Macintosh; Intel Mac OS X 15_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.4 Safari/605.1.15",
-                  "downstreamProto":"HTTP/2.0",
-                  "edgeRegion":"us-east4-eqdc4a",
-                  "host":"railway.com",
-                  "httpStatus":404,
-                  "method":"GET",
-                  "requestId":"SMy7Drs-RcGXiaSg4a9AQ",
-                  "responseDetails":"",
-                  "rxBytes":4302,
-                  "srcIp":"66.33.22.11",
-                  "totalDuration":242,
-                  "txBytes":19,
-                  "upstreamAddress":"http://[fd12:74d7:7e85:0:1000:34:be32:e1aa]:8080",
-                  "upstreamProto":"HTTP/1.1",
-                  "upstreamRqDuration":185
-               }
-            ]
-         ]
-      }
-   ]
-}
-```
-
-</details>
-</details>
-
 **Notes:**
 
--   Metadata is gathered approximately every 10 to 20 minutes. If a project/service/environment name has changed, the name in the metadata will not be correct until the locomotive refreshes its metadata.
+- Metadata such as the project, service, and environment names, along with their IDs, are automatically added to the logs that are sent under a `_metadata` attribute.
 
--   The body will always be a JSON array containing one or more log objects.
+- Metadata is gathered on startup and then approximately every 10 to 20 minutes. If a project, service, or environment name has changed, the name in the metadata will not be correct until the locomotive refreshes its metadata.
 
--   Various common timestamp attributes are included in every log object to increase compatibility with external logging services. [ref 1](https://axiom.co/docs/send-data/ingest#timestamp-field), [ref 2](https://betterstack.com/docs/logs/http-rest-api/#sending-timestamps)
+- The root attributes in the HTTP logs are subject to change as Railway adds or removes attributes.
 
--   The default `Content-Type` for these POST requests is set to `application/json`
+### All variables:
 
--   Structured log attributes sent to Grafana Loki must always be a string
+- `LOCOMOTIVE_RAILWAY_API_KEY` - Your Railway API token.
 
-- The root attributes in the HTTP logs are subject to change as Railway adds or removes information
+    **Required**.
 
-All variables:
+    - Project level tokens do not work.
+    - Team scoped tokens do not work.
 
--   `RAILWAY_API_KEY` - Your Railway API key.
+    Generate a [Railway API Token](https://railway.com/account/tokens)
 
-    -   Project level keys do not work.
+    </br>
 
--   `ENVIRONMENT_ID` - The environment ID your service is in.
+- `LOCOMOTIVE_ENVIRONMENT_ID` - The ID of the environment your services are in.
 
-    -   Auto-filled to the current environment ID.
+    **Required**.
 
--   `TRAIN` - The ID of the service you want to monitor.
+    - Auto-filled to the current environment ID.
 
-    -   Supports multiple service Ids, separated with a comma.
+    Make sure to deploy locomotive into the same environment as the services you want to monitor.
 
--   `DISCORD_WEBHOOK_URL` - The Discord webhook URL to send logs to.
+    [Railway Best Practices](https://docs.railway.com/overview/best-practices#deploying-related-services-into-the-same-project)
 
-    -   Optional.
+    Upon startup, Locomotive will verify that all the services exist within the set environment. If the environment does not exist, Locomotive will exit with an API error message.
 
--   `DISCORD_PRETTY_JSON` - Pretty print the RAW JSON object in Discord embeds.
+    If that check fails with an unauthorized error, you are likely using the wrong kind of API token.
 
--   `SLACK_WEBHOOK_URL` - The Slack webhook URL to send logs to.
+    </br>
 
-    -   Optional.
+- `LOCOMOTIVE_SERVICE_IDS` - The IDs of the services you want to monitor.
 
--   `SLACK_PRETTY_JSON` - Pretty print the RAW JSON object in Slack embeds.
+    **Required**.
 
--   `SLACK_TAGS` - Tags to add to the Slack message.
+    - Supports a single service ID.
+    - Supports multiple service IDs, separated with a comma.
 
-    -   Supports multiple tags, separated with a comma.
-    -   Optional.
+    Upon startup, locomotive will verify that all the services exist within the set environment. If any services do not exist, locomotive will exit with an error and provide a list of the missing services.
 
--   `LOKI_INGEST_URL` - The Loki ingest URL to send logs to.
+    If that check fails with an unauthorized error, you are likely using the wrong kind of API token.
 
-    -   Example with no authentication: `https://loki-instance.up.railway.app/loki/api/v1/push`
-    -   Example with username/password authentication: `https://user:pass@loki-instance.up.railway.app/loki/api/v1/push`
-    -   Optional.
+    </br>
 
--   `INGEST_URL` - The URL to send a generic request to.
+- `LOCOMOTIVE_WEBHOOK_URL` - The URL to send the webhook to.
 
-    -   Example for Datadog: `INGEST_URL=https://http-intake.logs.datadoghq.com/api/v2/logs`
-    -   Example for Axiom: `INGEST_URL=https://api.axiom.co/v1/datasets/DATASET_NAME/ingest`
-    -   Example for BetterStack: `INGEST_URL=https://in.logs.betterstack.com`
-    -   Optional.
+    **Required**.
 
--   `ADDITIONAL_HEADERS` - Any additional headers to be sent with the generic request.
+    - Example for Datadog: `https://http-intake.logs.datadoghq.com/api/v2/logs`
+    - Example for Axiom: `https://api.axiom.co/v1/datasets/<DATASET_NAME>/ingest`
+    - Example for BetterStack: `https://in.logs.betterstack.com`
 
-    -   Useful for auth. In the format of a cookie. meaning each key value pair is split by a semi-colon and each key value is split by an equals sign.
-    -   Example for Datadog: `ADDITIONAL_HEADERS=DD-API-KEY=<DD_API_KEY>;DD-APPLICATION-KEY=<DD_APP_KEY>`
-    -   Example for Axiom/BetterStack: `ADDITIONAL_HEADERS=Authorization=Bearer API_TOKEN`
+    See [Provider specific setup](#provider-specific-setup) for more information.
 
--   `REPORT_STATUS_EVERY` - Reports the status of the locomotive every 5 seconds.
+    </br>
 
-    -   Default: 5s.
-    -   Format must be in the Golang time.DurationParse format
-        -   E.g. 10h, 5h, 10m, 5m 5s
+- `LOCOMOTIVE_ADDITIONAL_HEADERS` - Any additional headers to be sent with the request.
 
--   `ENABLE_HTTP_LOGS` - Enable shipping HTTP logs.
+    **Optional**.
 
-    -   Default: false.
-    -   If enabled, locomotive will send logs to the HTTP endpoint specified in the `INGEST_URL` and `LOKI_INGEST_URL` environment variables.
-    -   Discord and Slack will not receive HTTP logs.
-    -   Optional.
+    - Useful for authentication. The string is in the format of a cookie, meaning each key-value pair is separated by a semicolon, and each key and value are separated by an equals sign.
 
--   `ENABLE_DEPLOY_LOGS` - Enable shipping deploy logs.
+    - Example for Datadog: `ADDITIONAL_HEADERS=DD-API-KEY=<DD_API_KEY>;DD-APPLICATION-KEY=<DD_APP_KEY>`
+    - Example for Axiom/BetterStack: `ADDITIONAL_HEADERS=Authorization=Bearer <API_TOKEN>`
 
-    -   Default: true.
-    -   If enabled, locomotive will send logs to all the configured outputs.
-    -   Optional.
+    See [Provider specific setup](#provider-specific-setup) for more information.
 
--   `LOGS_FILTER` - Global log filter.
+    </br>
 
-    -   Either ALL, INFO, ERROR, WARN or any custom combination of severity / level.
-    -   Accepts multiple values, separated with a comma.
-    -   Defaults to allowing all log levels.
-    -   Optional.
+- `LOCOMOTIVE_WEBHOOK_MODE` - The mode to use for the webhook.
 
--   `LOGS_FILTER_DISCORD` - Discord specific log filter.
+    **Optional**.
 
-    -   Same options and behavior as the global log filter.
+    - Default: `json`
+    
+    Currently supported modes:
 
--   `LOGS_FILTER_SLACK` - Slack specific log filter.
+    - `json`
+    - `jsonl`
+    - `papertrail`
+    - `datadog`
+    - `axiom`
+    - `betterstack`
+    - `loki`
+    - `sentry`
 
-    -   Same options and behavior as the global log filter.
+    </br>
 
--   `LOGS_FILTER_LOKI` - Slack specific log filter.
+- `LOCOMOTIVE_REPORT_STATUS_EVERY` - Reports the status of the locomotive every 5 seconds.
 
-    -   Same options and behavior as the global log filter.
+    **Optional**.
 
--   `LOGS_FILTER_WEBHOOK` - Ingest URL specific log filter.
+    - Default: `1m`
+    - Format must be in the Golang `time.DurationParse` format
+        - E.g. `10h`, `5h`, `10m`, `5m 5s`
 
-    -   Same options and behavior as the global log filter.
+    </br>
 
-## Log Filtering
+- `LOCOMOTIVE_ENABLE_HTTP_LOGS` - Enable transport of HTTP logs.
 
-You can filter logs by severity level and content using the following environment variables:
+    **Optional**.
 
-### Level Filters
+    - Default: `false`
 
--   `LOGS_FILTER`: Global level filter applied to all outputs
--   `LOGS_FILTER_DISCORD`: Level filter applied to Discord output
--   `LOGS_FILTER_SLACK`: Level filter applied to Slack output
--   `LOGS_FILTER_LOKI`: Level filter applied to Loki output
--   `LOGS_FILTER_WEBHOOK`: Level filter applied to webhook output
+    </br>
 
-Level filter options: ALL, INFO, ERROR, WARN, or any custom combination of severity / level.
+- `LOCOMOTIVE_ENABLE_DEPLOY_LOGS` - Enable transport of deploy logs.
 
-### Content Filters
+    **Optional**.
 
--   `LOGS_CONTENT_FILTER`: Global content filter applied to all outputs
--   `LOGS_CONTENT_FILTER_DISCORD`: Content filter applied to Discord output
--   `LOGS_CONTENT_FILTER_SLACK`: Content filter applied to Slack output
--   `LOGS_CONTENT_FILTER_LOKI`: Content filter applied to Loki output
--   `LOGS_CONTENT_FILTER_WEBHOOK`: Content filter applied to webhook output
+    - Default: `true`
 
-Content filters support regular expressions or plain text searches.
+    </br>
 
-Examples:
+### Provider specific setup:
 
--   "hello"
--   "[A-za-z]ello"
+#### Papertrail
+
+- `LOCOMOTIVE_WEBHOOK_MODE` - `papertrail`
+- `LOCOMOTIVE_WEBHOOK_URL` - `https://<PAPERTRAIL_HOSTNAME>/v1/logs/bulk`
+
+    The hostname can be found by adding a new destination and then opening the usage instructions.
+- `LOCOMOTIVE_ADDITIONAL_HEADERS` - `Authorization=Bearer <PAPERTRAIL_TOKEN>`
+
+    The token can be found by adding a new destination and then opening the usage instructions.
+
+    </br>
+
+#### Datadog
+
+- `LOCOMOTIVE_WEBHOOK_MODE` - `datadog`
+
+- `LOCOMOTIVE_WEBHOOK_URL` - `https://http-intake.logs.datadoghq.com/api/v2/logs`
+
+- `LOCOMOTIVE_ADDITIONAL_HEADERS` - `DD-API-KEY=<DD_API_KEY>;DD-APPLICATION-KEY=<DD_APP_KEY>`
+
+    </br>
+
+#### Axiom
+
+- `LOCOMOTIVE_WEBHOOK_MODE` - `axiom`
+
+- `LOCOMOTIVE_WEBHOOK_URL` - `https://api.axiom.co/v1/datasets/<DATASET_NAME>/ingest`
+
+    The dataset name can be found by under the 'Datasets' tab in the Axiom UI.
+
+- `LOCOMOTIVE_ADDITIONAL_HEADERS` - `Authorization=Bearer <API_TOKEN>`
+
+    The API token can be generated from within your account settings under the 'API Tokens' tab.
+
+    </br>
+
+#### BetterStack
+
+- `LOCOMOTIVE_WEBHOOK_MODE` - `betterstack`
+
+- `LOCOMOTIVE_WEBHOOK_URL` - `https://<BETTERSTACK_HOSTNAME>`
+
+    The hostname is generated when connecting a new source; choose HTTP.
+
+    You can also find the hostname in source configuration.
+
+- `LOCOMOTIVE_ADDITIONAL_HEADERS` - `Authorization=Bearer <TOKEN>`
+
+    The token is generated when connecting a new source; choose HTTP.
+
+    You can also find the token in source configuration.
+
+    </br>
+
+#### Loki
+
+- `LOCOMOTIVE_WEBHOOK_MODE` - `loki`
+
+- `LOCOMOTIVE_WEBHOOK_URL` - `https://<LOKI_HOSTNAME>/loki/api/v1/push`
+
+    The hostname would depend on where you are running Loki.
+
+    Or, with username and password authentication:
+
+    `https://<USERNAME>:<PASSWORD>@<LOKI_HOSTNAME>/loki/api/v1/push`
+
+    </br>
+
+#### Sentry
+
+- `LOCOMOTIVE_WEBHOOK_MODE` - `sentry`
+
+- `LOCOMOTIVE_WEBHOOK_URL` - `https://<SENTRY_HOSTNAME>/api/<SENTRY_PROJECT_ID>/envelope/`
+
+    The hostname can be found in the 'Client Keys (DSN)' section of the Sentry project settings, it will be the hostname of the given DSN.
+
+    The project ID can be also be found in the 'Client Keys (DSN)' section of the Sentry project settings, it will be the path in the URL of the given DSN.
+
+- `LOCOMOTIVE_ADDITIONAL_HEADERS` - `X-Sentry-Auth=Sentry sentry_key=<SENTRY_KEY>`
+
+    The key can again be found in the 'Client Keys (DSN)' section of the Sentry project settings, it will be the user part of the given DSN.
+
+    </br>

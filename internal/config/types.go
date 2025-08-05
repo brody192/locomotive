@@ -1,45 +1,41 @@
 package config
 
 import (
+	"net/url"
 	"time"
+
+	"github.com/brody192/locomotive/internal/railway/subscribe/environment_logs"
+	"github.com/brody192/locomotive/internal/railway/subscribe/http_logs"
+	"github.com/flexstack/uuid"
 )
 
-type AdditionalHeaders map[string]string
+type (
+	AdditionalHeaders map[string]string
 
-type Trains []string
+	WebhookMode string
+)
 
-type Config struct {
-	RailwayApiKey string `env:"RAILWAY_API_KEY,required"`
-	EnvironmentId string `env:"ENVIRONMENT_ID,required"`
-	Train         Trains `env:"TRAIN,required"`
+type WebhookConfig struct {
+	ExpectedHostContains string
+	ExpectedHeaders      []string
 
-	DiscordWebhookUrl string `env:"DISCORD_WEBHOOK_URL"`
-	DiscordPrettyJson bool   `env:"DISCORD_PRETTY_JSON" envDefault:"false"`
+	Headers AdditionalHeaders
 
-	SlackWebhookUrl string   `env:"SLACK_WEBHOOK_URL"`
-	SlackPrettyJson bool     `env:"SLACK_PRETTY_JSON" envDefault:"false"`
-	SlackTags       []string `env:"SLACK_TAGS" envSeparator:","`
+	EnvironmentLogReconstructorFunc func([]environment_logs.EnvironmentLogWithMetadata) ([]byte, error)
+	HTTPLogReconstructorFunc        func([]http_logs.DeploymentHttpLogWithMetadata) ([]byte, error)
+}
 
-	LokiIngestUrl string `env:"LOKI_INGEST_URL"`
+type config struct {
+	RailwayApiKey uuid.UUID   `env:"LOCOMOTIVE_RAILWAY_API_KEY,required,notEmpty"`
+	EnvironmentId uuid.UUID   `env:"LOCOMOTIVE_ENVIRONMENT_ID,required,notEmpty"`
+	ServiceIds    []uuid.UUID `env:"LOCOMOTIVE_SERVICE_IDS,required,notEmpty"`
 
-	IngestUrl         string            `env:"INGEST_URL"`
-	AdditionalHeaders AdditionalHeaders `env:"ADDITIONAL_HEADERS"`
+	WebhookUrl        url.URL           `env:"LOCOMOTIVE_WEBHOOK_URL,required,notEmpty"`
+	AdditionalHeaders AdditionalHeaders `env:"LOCOMOTIVE_ADDITIONAL_HEADERS"`
+	WebhookMode       WebhookMode       `env:"LOCOMOTIVE_WEBHOOK_MODE" envDefault:"json"`
 
-	ReportStatusEvery time.Duration `env:"REPORT_STATUS_EVERY" envDefault:"10s"`
+	ReportStatusEvery time.Duration `env:"LOCOMOTIVE_REPORT_STATUS_EVERY" envDefault:"1m"`
 
-	EnableHttpLogs   bool `env:"ENABLE_HTTP_LOGS" envDefault:"false"`
-	EnableDeployLogs bool `env:"ENABLE_DEPLOY_LOGS" envDefault:"true"`
-
-	LogsFilterGlobal  []string `env:"LOGS_FILTER" envSeparator:","`
-	LogsFilterDiscord []string `env:"LOGS_FILTER_DISCORD" envSeparator:","`
-	LogsFilterSlack   []string `env:"LOGS_FILTER_SLACK" envSeparator:","`
-	LogsFilterLoki    []string `env:"LOGS_FILTER_LOKI" envSeparator:","`
-	LogsFilterWebhook []string `env:"LOGS_FILTER_WEBHOOK" envSeparator:","`
-
-	// New content filter fields
-	LogsContentFilterGlobal  string `env:"LOGS_CONTENT_FILTER"`
-	LogsContentFilterDiscord string `env:"LOGS_CONTENT_FILTER_DISCORD"`
-	LogsContentFilterSlack   string `env:"LOGS_CONTENT_FILTER_SLACK"`
-	LogsContentFilterLoki    string `env:"LOGS_CONTENT_FILTER_LOKI"`
-	LogsContentFilterWebhook string `env:"LOGS_CONTENT_FILTER_WEBHOOK"`
+	EnableHttpLogs   bool `env:"LOCOMOTIVE_ENABLE_HTTP_LOGS" envDefault:"false"`
+	EnableDeployLogs bool `env:"LOCOMOTIVE_ENABLE_DEPLOY_LOGS" envDefault:"true"`
 }

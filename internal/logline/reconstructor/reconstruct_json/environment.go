@@ -1,92 +1,88 @@
 package reconstruct_json
 
 import (
-	"encoding/json"
+	"bytes"
+	"cmp"
 	"fmt"
+	"slices"
 	"strconv"
 	"time"
+	"unsafe"
 
-	"github.com/buger/jsonparser"
-
-	"github.com/ferretcode/locomotive/internal/railway/subscribe/environment_logs"
-	"github.com/ferretcode/locomotive/internal/util"
+	"github.com/brody192/locomotive/internal/logline/reconstructor"
+	"github.com/brody192/locomotive/internal/railway/subscribe/environment_logs"
+	"github.com/brody192/locomotive/internal/util"
+	"github.com/tidwall/sjson"
 )
 
-// reconstruct multiple logs into a raw json array containing json log lines
-func EnvironmentLogLinesJson(logs []environment_logs.EnvironmentLogWithMetadata) ([]byte, error) {
-	var jsonObject []byte
+// reconstruct multiple deployment logs into a raw json array
+func EnvironmentLogsJsonArray(logs []environment_logs.EnvironmentLogWithMetadata) ([]byte, error) {
+	return EnvironmentLogsJsonArrayWithConfig(logs, Config{})
+}
 
-	jsonObject = append(jsonObject, []byte(`[`)...)
+// reconstruct multiple deployment logs into a raw json array with a custom timestamp attribute
+func EnvironmentLogsJsonArrayWithConfig(logs []environment_logs.EnvironmentLogWithMetadata, config Config) ([]byte, error) {
+	array := `[]`
 
 	for i := range logs {
-		logObject, err := EnvironmentLogLineJson(logs[i])
+		logObject, err := environmentLogJson(logs[i], config)
 		if err != nil {
 			return nil, err
 		}
 
-		jsonObject = append(jsonObject, logObject...)
-
-		if (i + 1) < len(logs) {
-			jsonObject = append(jsonObject, []byte(`,`)...)
-		}
+		array, _ = sjson.SetRaw(array, strconv.Itoa(i), unsafe.String(unsafe.SliceData(logObject), len(logObject)))
 	}
 
-	jsonObject = append(jsonObject, []byte(`]`)...)
-
-	return jsonObject, nil
+	return unsafe.Slice(unsafe.StringData(array), len(array)), nil
 }
 
-// reconstruct a single log into a raw json object
-func EnvironmentLogLineJson(log environment_logs.EnvironmentLogWithMetadata) ([]byte, error) {
-	jsonObject := []byte("{}")
+// reconstruct multiple deployment logs into json lines
+func EnvironmentLogsJsonLines(logs []environment_logs.EnvironmentLogWithMetadata) ([]byte, error) {
+	return EnvironmentLogsJsonLinesWithConfig(logs, Config{})
+}
 
-	cleanMessage := util.StripAnsi(log.Log.Message)
+// reconstruct multiple deployment logs into json lines with a custom timestamp attribute
+func EnvironmentLogsJsonLinesWithConfig(logs []environment_logs.EnvironmentLogWithMetadata, config Config) ([]byte, error) {
+	lines := bytes.Buffer{}
 
-	jsonObject, err := jsonparser.Set(jsonObject, []byte(strconv.Quote(cleanMessage)), "message")
-	if err != nil {
-		return nil, fmt.Errorf("failed to append message attribute to object: %w", err)
+	for i := range logs {
+		logObject, err := environmentLogJson(logs[i], config)
+		if err != nil {
+			return nil, err
+		}
+
+		lines.Write(logObject)
+
+		if i < (len(logs) - 1) {
+			lines.WriteByte('\n')
+		}
 	}
 
-	metadata, err := json.Marshal(log.Metadata)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal metadata object: %w", err)
+	return lines.Bytes(), nil
+}
+
+// reconstruct a single deployment log into a raw json object
+func environmentLogJson(log environment_logs.EnvironmentLogWithMetadata, config Config) ([]byte, error) {
+	object := `{}`
+
+	for key, value := range log.Metadata {
+		object, _ = sjson.Set(object, fmt.Sprintf("_metadata.%s", key), value)
 	}
 
-	jsonObject, err = jsonparser.Set(jsonObject, metadata, "_metadata")
-	if err != nil {
-		return nil, fmt.Errorf("failed to append metadata attribute to object: %w", err)
-	}
+	object, _ = sjson.Set(object, "message", util.StripAnsi(log.Log.Message))
+
+	object, _ = sjson.Set(object, "severity", log.Log.Severity)
 
 	for i := range log.Log.Attributes {
-		jsonObject, err = jsonparser.Set(jsonObject, []byte(log.Log.Attributes[i].Value), log.Log.Attributes[i].Key)
-		if err != nil {
-			return nil, fmt.Errorf("failed to append json attribute to object: %w", err)
+		// if the attribute is a reserved attribute, add an underscore to the beginning of the key
+		if slices.Contains(config.ReserverdAttributes, log.Log.Attributes[i].Key) {
+			log.Log.Attributes[i].Key = fmt.Sprintf("_%s", log.Log.Attributes[i].Key)
 		}
+
+		object, _ = sjson.SetRaw(object, log.Log.Attributes[i].Key, log.Log.Attributes[i].Value)
 	}
 
-	// check for a timestamp attribute
-	timeStampAttr, hasTimeStampAttr := environment_logs.AttributesHasKeys(log.Log.Attributes, commonTimeStampAttributes)
+	object, _ = sjson.Set(object, cmp.Or(config.TimestampAttribute, "timestamp"), cmp.Or(reconstructor.TryExtractTimestamp(log), log.Log.Timestamp).Format(time.RFC3339Nano))
 
-	if !hasTimeStampAttr {
-		timeStampAttr = log.Log.Timestamp.Format(time.RFC3339Nano)
-	}
-
-	// add the timestamps that common logging services like betterstack and axiom expect
-	// ref: https://betterstack.com/docs/logs/http-rest-api/#sending-timestamps
-	// ref: https://axiom.co/docs/send-data/ingest#timestamp-field
-	for i := range commonTimeStampAttributes {
-		jsonObject, err = jsonparser.Set(jsonObject, []byte(util.QuoteIfNeeded(timeStampAttr)), commonTimeStampAttributes[i])
-		if err != nil {
-			return nil, fmt.Errorf("failed to append %s attribute to object: %w", commonTimeStampAttributes[i], err)
-		}
-	}
-
-	// set severity in all situations for backwards compatibility
-	// railway already normalizes the level attribute into the severity field, or vice versa
-	jsonObject, err = jsonparser.Set(jsonObject, []byte(strconv.Quote(log.Log.Severity)), "severity")
-	if err != nil {
-		return nil, fmt.Errorf("failed to append severity attribute to object: %w", err)
-	}
-
-	return jsonObject, nil
+	return unsafe.Slice(unsafe.StringData(object), len(object)), nil
 }

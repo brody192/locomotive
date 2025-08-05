@@ -1,27 +1,18 @@
 package http_logs
 
 import (
+	"encoding/json"
 	"time"
-
-	"github.com/ferretcode/locomotive/internal/railway/gql/subscriptions"
 )
 
+type DeploymentHttpLogMetadata map[string]string
+
 type DeploymentHttpLogWithMetadata struct {
-	Log       subscriptions.HttpLog
-	Path      string
 	Timestamp time.Time
-	Metadata  DeploymentHttpLogMetadata
-}
 
-type DeploymentHttpLogMetadata struct {
-	ProjectID   string `json:"projectId"`
-	ProjectName string `json:"projectName"`
+	Log        json.RawMessage
+	Path       string
+	StatusCode int64
 
-	EnvironmentID   string `json:"environmentId"`
-	EnvironmentName string `json:"environmentName"`
-
-	ServiceID   string `json:"serviceId"`
-	ServiceName string `json:"serviceName"`
-
-	DeploymentID string `json:"deploymentId"`
+	Metadata DeploymentHttpLogMetadata
 }

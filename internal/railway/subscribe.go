@@ -8,19 +8,14 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/brody192/locomotive/internal/railway/gql/subscriptions"
 	"github.com/coder/websocket"
-	"github.com/ferretcode/locomotive/internal/railway/gql/subscriptions"
-	"github.com/google/uuid"
-)
-
-var (
-	connectionInit = []byte(`{"type":"connection_init"}`)
-	connectionAck  = []byte(`{"type":"connection_ack"}`)
+	"github.com/flexstack/uuid"
 )
 
 func (g *GraphQLClient) CreateWebSocketSubscription(ctx context.Context, payload any) (*websocket.Conn, error) {
 	subPayload := map[string]any{
-		"id":      uuid.New().String(),
+		"id":      uuid.Must(uuid.NewV4()),
 		"type":    subscriptions.SubscriptionTypeSubscribe,
 		"payload": payload,
 	}
@@ -32,7 +27,7 @@ func (g *GraphQLClient) CreateWebSocketSubscription(ctx context.Context, payload
 
 	opts := &websocket.DialOptions{
 		HTTPHeader: http.Header{
-			"Authorization": []string{"Bearer " + g.AuthToken},
+			"Authorization": []string{"Bearer " + g.AuthToken.String()},
 			"Content-Type":  []string{"application/json"},
 		},
 		Subprotocols: []string{"graphql-transport-ws"},

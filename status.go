@@ -6,14 +6,43 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ferretcode/locomotive/internal/config"
-	"github.com/ferretcode/locomotive/internal/logger"
-	"github.com/ferretcode/locomotive/internal/util"
+	"github.com/brody192/locomotive/internal/config"
+	"github.com/brody192/locomotive/internal/logger"
+	"github.com/brody192/locomotive/internal/util"
 )
 
-func reportStatusAsync(cfg *config.Config, deployLogsProcessed *atomic.Int64, httpLogsProcessed *atomic.Int64) {
+func reportStatusAsync(deployLogsProcessed *atomic.Int64, httpLogsProcessed *atomic.Int64) {
+	initReport := make(chan struct{}, 1)
+
+	var prevDeployLogs, prevHttpLogs int64
+
 	go func() {
-		t := time.NewTicker(cfg.ReportStatusEvery)
+		t := time.NewTicker(50 * time.Millisecond)
+		defer t.Stop()
+
+		for range t.C {
+			deployLogsProcessed := deployLogsProcessed.Load()
+			httpLogsProcessed := httpLogsProcessed.Load()
+
+			if deployLogsProcessed > 0 || httpLogsProcessed > 0 {
+				logger.Stdout.Info("The locomotive is chugging along...",
+					slog.Int64("deploy_logs_processed", deployLogsProcessed),
+					slog.Int64("http_logs_processed", httpLogsProcessed),
+				)
+
+				prevDeployLogs = deployLogsProcessed
+				prevHttpLogs = httpLogsProcessed
+
+				close(initReport)
+				return
+			}
+		}
+	}()
+
+	go func() {
+		<-initReport
+
+		t := time.NewTicker(config.Global.ReportStatusEvery)
 		defer t.Stop()
 
 		for range t.C {
@@ -43,7 +72,14 @@ func reportStatusAsync(cfg *config.Config, deployLogsProcessed *atomic.Int64, ht
 				)
 			}
 
-			statusLog.Info("The locomotive is chugging along...")
+			if deployLogsProcessed == prevDeployLogs && httpLogsProcessed == prevHttpLogs {
+				statusLog.Info("The locomotive is waiting for cargo...")
+			} else {
+				statusLog.Info("The locomotive is chugging along...")
+			}
+
+			prevDeployLogs = deployLogsProcessed
+			prevHttpLogs = httpLogsProcessed
 		}
 	}()
 }
