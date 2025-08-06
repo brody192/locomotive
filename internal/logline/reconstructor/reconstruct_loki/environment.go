@@ -28,7 +28,9 @@ func EnvironmentLogStreams(logs []environment_logs.EnvironmentLogWithMetadata) (
 		streams, _ = sjson.Set(streams, fmt.Sprintf("streams.%d.values.0.1", i), util.StripAnsi(logs[i].Log.Message))
 
 		for j := range logs[i].Log.Attributes {
-			streams, _ = sjson.SetRaw(streams, fmt.Sprintf("streams.%d.values.0.2.%s", i, logs[i].Log.Attributes[j].Key), logs[i].Log.Attributes[j].Value)
+			for key, value := range jsonToAttributes(logs[i].Log.Attributes[j].Key, logs[i].Log.Attributes[j].Value) {
+				streams, _ = sjson.Set(streams, fmt.Sprintf("streams.%d.values.0.2.%s", i, key), value)
+			}
 		}
 	}
 

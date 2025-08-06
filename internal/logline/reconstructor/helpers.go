@@ -9,6 +9,10 @@ import (
 	"github.com/brody192/locomotive/internal/railway/subscribe/environment_logs"
 )
 
+func IsCommonTimeStampAttribute(attribute string) bool {
+	return slices.Contains(commonTimeStampAttributes, attribute)
+}
+
 // Try to extract a timestamp from the log attributes with `dateparse.ParseStrict`.
 //
 // If no timestamp is found, or if all timestamps fail to parse, a zero value is returned.
@@ -28,8 +32,4 @@ func TryExtractTimestamp(log environment_logs.EnvironmentLogWithMetadata) time.T
 	}
 
 	return time.Time{}
-}
-
-func IsCommonTimeStampAttribute(attribute string) bool {
-	return slices.Contains(commonTimeStampAttributes, attribute)
 }

@@ -10,7 +10,7 @@ import (
 
 func SendDeployLogsWebhook(logs []environment_logs.EnvironmentLogWithMetadata) error {
 	if err := generic.SendWebhookForDeployLogs(logs, client); err != nil {
-		return fmt.Errorf("failed to send generic webhook for deploy logs: %w", err)
+		return fmt.Errorf("failed to send webhook for deploy logs: %w", err)
 	}
 
 	return nil
@@ -18,7 +18,7 @@ func SendDeployLogsWebhook(logs []environment_logs.EnvironmentLogWithMetadata) e
 
 func SendHttpLogsWebhook(logs []http_logs.DeploymentHttpLogWithMetadata) error {
 	if err := generic.SendWebhookForHttpLogs(logs, client); err != nil {
-		return fmt.Errorf("failed to send generic webhook for http logs: %w", err)
+		return fmt.Errorf("failed to send webhook for http logs: %w", err)
 	}
 
 	return nil

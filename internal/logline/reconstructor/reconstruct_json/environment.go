@@ -82,7 +82,9 @@ func environmentLogJson(log environment_logs.EnvironmentLogWithMetadata, config 
 		object, _ = sjson.SetRaw(object, log.Log.Attributes[i].Key, log.Log.Attributes[i].Value)
 	}
 
-	object, _ = sjson.Set(object, cmp.Or(config.TimestampAttribute, "timestamp"), cmp.Or(reconstructor.TryExtractTimestamp(log), log.Log.Timestamp).Format(time.RFC3339Nano))
+	if config.TimestampAttribute != "" {
+		object, _ = sjson.Set(object, config.TimestampAttribute, cmp.Or(reconstructor.TryExtractTimestamp(log), log.Log.Timestamp).Format(time.RFC3339Nano))
+	}
 
 	return unsafe.Slice(unsafe.StringData(object), len(object)), nil
 }

@@ -2,7 +2,6 @@ package reconstruct_json
 
 import (
 	"bytes"
-	"cmp"
 	"fmt"
 	"strconv"
 	"time"
@@ -69,8 +68,6 @@ func httpLogLineJson(log http_logs.DeploymentHttpLogWithMetadata, config Config)
 
 	object, _ = sjson.Set(object, "message", log.Path)
 
-	object, _ = sjson.Set(object, cmp.Or(config.TimestampAttribute, "timestamp"), log.Timestamp.Format(time.RFC3339Nano))
-
 	for _, attribute := range config.ReserverdAttributes {
 		attr := gjson.Get(object, attribute)
 
@@ -78,6 +75,10 @@ func httpLogLineJson(log http_logs.DeploymentHttpLogWithMetadata, config Config)
 			object, _ = sjson.Delete(object, attribute)
 			object, _ = sjson.Set(object, fmt.Sprintf("_%s", attribute), attr.Value())
 		}
+	}
+
+	if config.TimestampAttribute != "" {
+		object, _ = sjson.Set(object, config.TimestampAttribute, log.Timestamp.Format(time.RFC3339Nano))
 	}
 
 	return unsafe.Slice(unsafe.StringData(object), len(object)), nil

@@ -97,7 +97,7 @@ func init() {
 	}
 
 	// Warn if we added any header validation attributes beyond the basic ones
-	if len(headerAttrs) > 2 {
+	if len(headerAttrs) > 2 && len(hostAttrs) <= 2 {
 		logger.Stderr.Warn("possible webhook header misconfiguration", headerAttrs...)
 	}
 }

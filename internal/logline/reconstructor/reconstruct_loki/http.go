@@ -2,6 +2,7 @@ package reconstruct_loki
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"unsafe"
 
@@ -23,10 +24,14 @@ func HttpLogStreams(logs []http_logs.DeploymentHttpLogWithMetadata) ([]byte, err
 
 		streams, _ = sjson.Set(streams, fmt.Sprintf("streams.%d.values.0.0", i), timestamp)
 		streams, _ = sjson.Set(streams, fmt.Sprintf("streams.%d.values.0.1", i), logs[i].Path)
-		streams, _ = sjson.SetRaw(streams, fmt.Sprintf("streams.%d.values.0.2", i), unsafe.String(unsafe.SliceData(logs[i].Log), len(logs[i].Log)))
 
-		streams, _ = sjson.Delete(streams, fmt.Sprintf("streams.%d.values.0.2.timestamp", i))
-		streams, _ = sjson.Delete(streams, fmt.Sprintf("streams.%d.values.0.2.path", i))
+		for key, value := range jsonBytesToAttributes("", logs[i].Log) {
+			if slices.Contains(httpAttributesToSkip, key) {
+				continue
+			}
+
+			streams, _ = sjson.Set(streams, fmt.Sprintf("streams.%d.values.0.2.%s", i, key), value)
+		}
 	}
 
 	return unsafe.Slice(unsafe.StringData(streams), len(streams)), nil
