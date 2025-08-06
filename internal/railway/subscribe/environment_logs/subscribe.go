@@ -173,6 +173,8 @@ func SubscribeToServiceLogs(ctx context.Context, g *railway.GraphQLClient, logTr
 
 					"deployment_id":          logs.Payload.Data.EnvironmentLogs[i].Tags.DeploymentID.String(),
 					"deployment_instance_id": logs.Payload.Data.EnvironmentLogs[i].Tags.DeploymentInstanceID.String(),
+
+					"log_type": "environment",
 				},
 			})
 		}

@@ -210,6 +210,8 @@ func getHttpLogs(ctx context.Context, g *railway.GraphQLClient, initialDeploymen
 		return fmt.Errorf("error getting metadata for deployment %s: %w", initialDeployment.ID, err)
 	}
 
+	metadata["log_type"] = "http"
+
 	// Main loop for reading from this specific connection
 	for {
 		select {
