@@ -1,8 +1,8 @@
 module github.com/brody192/locomotive
 
-go 1.24
+go 1.25
 
-toolchain go1.24.4
+toolchain go1.25.0
 
 require (
 	github.com/Code-Hex/go-generics-cache v1.5.1
