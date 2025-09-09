@@ -15,6 +15,8 @@ With tailored support for:
 
 And more with the standard JSON and JSON Lines modes.
 
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template/locomotive)
+
 ## Configuration
 
 Configuration is done through environment variables. See explanation and examples below.
