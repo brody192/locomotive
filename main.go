@@ -4,41 +4,21 @@ import (
 	"context"
 	"log/slog"
 	"os"
-	"os/signal"
-	"runtime"
 	"sync/atomic"
-	"syscall"
-	"time"
 
-	"github.com/ferretcode/locomotive/config"
-	"github.com/ferretcode/locomotive/logger"
-	"github.com/ferretcode/locomotive/railway"
-	"github.com/ferretcode/locomotive/util"
-	"github.com/ferretcode/locomotive/webhook"
-	"github.com/joho/godotenv"
-	"github.com/sethvargo/go-retry"
+	"github.com/brody192/locomotive/internal/config"
+	"github.com/brody192/locomotive/internal/errgroup"
+	"github.com/brody192/locomotive/internal/logger"
+	"github.com/brody192/locomotive/internal/railway"
+	"github.com/brody192/locomotive/internal/railway/subscribe/environment_logs"
+	"github.com/brody192/locomotive/internal/railway/subscribe/http_logs"
 )
 
 func main() {
-	if _, err := os.Stat(".env"); err == nil {
-		if godotenv.Load() != nil {
-			logger.Stderr.Error("error loading .env file", logger.ErrAttr(err))
-			os.Exit(1)
-		}
-	}
-
-	cfg, err := config.GetConfig()
-	if err != nil {
-		logger.Stderr.Error("error parsing config", logger.ErrAttr(err))
-		os.Exit(1)
-	}
-
-	done := make(chan os.Signal, 1)
-
-	signal.Notify(done, os.Interrupt, syscall.SIGTERM)
+	logger.Stdout.Info("Preparing the locomotive for departure...")
 
 	gqlClient, err := railway.NewClient(&railway.GraphQLClient{
-		AuthToken:           cfg.RailwayApiKey,
+		AuthToken:           config.Global.RailwayApiKey,
 		BaseURL:             "https://backboard.railway.app/graphql/v2",
 		BaseSubscriptionURL: "wss://backboard.railway.app/graphql/internal",
 	})
@@ -47,82 +27,67 @@ func main() {
 		os.Exit(1)
 	}
 
-	logTrack := make(chan []railway.EnvironmentLog)
+	servicesExist, missingServices, err := railway.VerifyAllServicesExistWithinEnvironment(gqlClient, config.Global.ServiceIds, config.Global.EnvironmentId)
+	if err != nil {
+		logger.Stderr.Error("error verifying if services exist within the environment", logger.ErrAttr(err))
+		os.Exit(1)
+	}
 
-	ctx := context.Background()
+	if !servicesExist {
+		logger.Stderr.Error("all services must exist within the environment set by the LOCOMOTIVE_ENVIRONMENT_ID variable",
+			slog.Any("missing_service_ids", missingServices),
+			slog.Any("configured_service_ids", config.Global.ServiceIds),
+			slog.Any("environment_id", config.Global.EnvironmentId),
+		)
+		os.Exit(1)
+	}
 
-	go func() {
-		b := retry.NewFibonacci(100 * time.Millisecond)
+	logger.Stdout.Info("The locomotive is ready to depart...",
+		slog.Any("service_ids", config.Global.ServiceIds),
+		slog.Any("environment_id", config.Global.EnvironmentId),
+		slog.Any("webhook_mode", config.Global.WebhookMode),
+		slog.Bool("enable_http_logs", config.Global.EnableHttpLogs),
+		slog.Bool("enable_deploy_logs", config.Global.EnableDeployLogs),
+	)
 
-		b = retry.WithCappedDuration((5 * time.Second), b)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-		if err := retry.Do(ctx, b, func(ctx context.Context) error {
-			if err := gqlClient.SubscribeToLogs(ctx, logTrack, cfg); err != nil {
-				logger.Stderr.Error("error subscribing to logs", logger.ErrAttr(err))
+	serviceLogTrack := make(chan []environment_logs.EnvironmentLogWithMetadata)
+	httpLogTrack := make(chan []http_logs.DeploymentHttpLogWithMetadata)
 
-				return retry.RetryableError(err)
-			}
+	deployLogsProcessed := atomic.Int64{}
+	httpLogsProcessed := atomic.Int64{}
 
+	reportStatusAsync(&deployLogsProcessed, &httpLogsProcessed)
+
+	handleDeployLogsAsync(ctx, &deployLogsProcessed, serviceLogTrack)
+	handleHttpLogsAsync(ctx, &httpLogsProcessed, httpLogTrack)
+
+	errGroup := errgroup.NewErrGroup()
+
+	errGroup.Go(func() error {
+		if !config.Global.EnableDeployLogs {
+			logger.Stdout.Info("Deploy log transport is disabled. To enable it, set LOCOMOTIVE_ENABLE_DEPLOY_LOGS=true")
 			return nil
-		}); err != nil {
-			logger.Stderr.Error("fatal error subscribing to logs", logger.ErrAttr(err))
 		}
 
-		logger.Stdout.Debug("log subscription ended")
-	}()
+		return startStreamingDeployLogs(ctx, gqlClient, serviceLogTrack, config.Global.EnvironmentId, config.Global.ServiceIds)
+	})
 
-	var logsTransported atomic.Int64
-
-	go func() {
-		t := time.NewTicker(cfg.ReportStatusEvery)
-		defer t.Stop()
-
-		for range t.C {
-			logsSent := logsTransported.Load()
-
-			if logsSent == 0 {
-				continue
-			}
-
-			statusLog := logger.Stdout.With(slog.Int64("logs_transported", logsSent))
-
-			if logger.StdoutLvl.Level() == slog.LevelDebug {
-				memStats := &runtime.MemStats{}
-				runtime.ReadMemStats(memStats)
-
-				statusLog = statusLog.With(
-					slog.String("total_alloc", util.ByteCountIEC(memStats.TotalAlloc)),
-					slog.String("heap_alloc", util.ByteCountIEC(memStats.HeapAlloc)),
-					slog.String("heap_in_use", util.ByteCountIEC(memStats.HeapInuse)),
-					slog.String("stack_in_use", util.ByteCountIEC(memStats.StackInuse)),
-					slog.String("other_sys", util.ByteCountIEC(memStats.OtherSys)),
-					slog.String("sys", util.ByteCountIEC(memStats.Sys)),
-				)
-			}
-
-			statusLog.Info("The locomotive is chugging along...")
+	errGroup.Go(func() error {
+		if !config.Global.EnableHttpLogs {
+			logger.Stdout.Info("HTTP log transport is disabled. To enable it, set LOCOMOTIVE_ENABLE_HTTP_LOGS=true")
+			return nil
 		}
-	}()
 
-	go func() {
-		for {
-			select {
-			case <-done:
-				os.Exit(0)
-			case logs := <-logTrack:
-				logsSent, errors := webhook.SendWebhooks(logs, cfg)
-				if errorsLen := len(errors); errorsLen > 0 {
-					logger.Stderr.Error("error sending webhook(s)", logger.ErrorsAttr(errors...))
-
-					continue
-				}
-
-				logsTransported.Add(logsSent)
-			}
-		}
-	}()
+		return startStreamingHttpLogs(ctx, gqlClient, httpLogTrack, config.Global.EnvironmentId, config.Global.ServiceIds)
+	})
 
 	logger.Stdout.Info("The locomotive is waiting for cargo...")
 
-	<-done
+	if err := errGroup.Wait(); err != nil {
+		logger.Stderr.Error("error returned from subscription(s)", logger.ErrAttr(err))
+		os.Exit(1)
+	}
 }
