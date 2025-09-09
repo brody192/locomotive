@@ -2,7 +2,7 @@
 
 A Railway sidecar service for sending webhook events when new logs are received.
 
-Nearly equivelant to Heroku's log drain, but for Railway.
+Nearly equivalent to Heroku's log drain, but for Railway.
 
 With tailored support for:
 
@@ -35,8 +35,8 @@ Configuration is done through environment variables. See explanation and example
 
     **Required**.
 
-    - Project level tokens do not work.
-    - Team scoped tokens do not work.
+    - Project-level tokens do not work.
+    - Team-scoped tokens do not work.
 
     Generate a [Railway API Token](https://railway.com/account/tokens)
 
@@ -48,7 +48,7 @@ Configuration is done through environment variables. See explanation and example
 
     - Auto-filled to the current environment ID.
 
-    Make sure to deploy locomotive into the same environment as the services you want to monitor.
+    Make sure to deploy Locomotive into the same environment as the services you want to monitor.
 
     [Railway Best Practices](https://docs.railway.com/overview/best-practices#deploying-related-services-into-the-same-project)
 
@@ -65,7 +65,7 @@ Configuration is done through environment variables. See explanation and example
     - Supports a single service ID.
     - Supports multiple service IDs, separated with a comma.
 
-    Upon startup, locomotive will verify that all the services exist within the set environment. If any services do not exist, locomotive will exit with an error and provide a list of the missing services.
+    Upon startup, Locomotive will verify that all the services exist within the set environment. If any services do not exist, Locomotive will exit with an error and provide a list of the missing services.
 
     If that check fails with an unauthorized error, you are likely using the wrong kind of API token.
 
@@ -141,7 +141,7 @@ Configuration is done through environment variables. See explanation and example
 
     </br>
 
-### Provider specific setup:
+### Provider-specific setup:
 
 #### Papertrail
 
@@ -171,7 +171,7 @@ Configuration is done through environment variables. See explanation and example
 
 - `LOCOMOTIVE_WEBHOOK_URL` - `https://api.axiom.co/v1/datasets/<DATASET_NAME>/ingest`
 
-    The dataset name can be found by under the 'Datasets' tab in the Axiom UI.
+    The dataset name can be found under the 'Datasets' tab in the Axiom UI.
 
 - `LOCOMOTIVE_ADDITIONAL_HEADERS` - `Authorization=Bearer <API_TOKEN>`
 
@@ -187,13 +187,13 @@ Configuration is done through environment variables. See explanation and example
 
     The hostname is generated when connecting a new source; choose HTTP.
 
-    You can also find the hostname in source configuration.
+    You can also find the hostname in the source configuration.
 
 - `LOCOMOTIVE_ADDITIONAL_HEADERS` - `Authorization=Bearer <TOKEN>`
 
     The token is generated when connecting a new source; choose HTTP.
 
-    You can also find the token in source configuration.
+    You can also find the token in the source configuration.
 
     </br>
 
@@ -217,12 +217,13 @@ Configuration is done through environment variables. See explanation and example
 
 - `LOCOMOTIVE_WEBHOOK_URL` - `https://<SENTRY_HOSTNAME>/api/<SENTRY_PROJECT_ID>/envelope/`
 
-    The hostname can be found in the 'Client Keys (DSN)' section of the Sentry project settings, it will be the hostname of the given DSN.
+    The hostname can be found in the 'Client Keys (DSN)' section of the Sentry project settings; it will be the hostname of the given DSN.
 
     The project ID can be also be found in the 'Client Keys (DSN)' section of the Sentry project settings, it will be the path in the URL of the given DSN.
 
 - `LOCOMOTIVE_ADDITIONAL_HEADERS` - `X-Sentry-Auth=Sentry sentry_key=<SENTRY_KEY>`
 
-    The key can again be found in the 'Client Keys (DSN)' section of the Sentry project settings, it will be the user part of the given DSN.
+    The key can again be found in the 'Client Keys (DSN)' section of the Sentry project settings; it will be the user part of the given DSN.
 
     </br>
+
