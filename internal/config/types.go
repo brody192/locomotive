@@ -26,16 +26,16 @@ type WebhookConfig struct {
 }
 
 type config struct {
-	RailwayApiKey uuid.UUID   `env:"LOCOMOTIVE_RAILWAY_API_KEY,required,notEmpty"`
-	EnvironmentId uuid.UUID   `env:"LOCOMOTIVE_ENVIRONMENT_ID,required,notEmpty"`
-	ServiceIds    []uuid.UUID `env:"LOCOMOTIVE_SERVICE_IDS,required,notEmpty"`
+	RailwayApiKey uuid.UUID   `env:"RAILWAY_API_KEY,required,notEmpty"`
+	EnvironmentId uuid.UUID   `env:"ENVIRONMENT_ID,required,notEmpty"`
+	ServiceIds    []uuid.UUID `env:"SERVICE_IDS,required,notEmpty"`
 
-	WebhookUrl        url.URL           `env:"LOCOMOTIVE_WEBHOOK_URL,required,notEmpty"`
-	AdditionalHeaders AdditionalHeaders `env:"LOCOMOTIVE_ADDITIONAL_HEADERS"`
-	WebhookMode       WebhookMode       `env:"LOCOMOTIVE_WEBHOOK_MODE" envDefault:"json"`
+	WebhookUrl        url.URL           `env:"WEBHOOK_URL,required,notEmpty"`
+	AdditionalHeaders AdditionalHeaders `env:"ADDITIONAL_HEADERS"`
+	WebhookMode       WebhookMode       `env:"WEBHOOK_MODE" envDefault:"json"`
 
-	ReportStatusEvery time.Duration `env:"LOCOMOTIVE_REPORT_STATUS_EVERY" envDefault:"1m"`
+	ReportStatusEvery time.Duration `env:"REPORT_STATUS_EVERY" envDefault:"1m"`
 
-	EnableHttpLogs   bool `env:"LOCOMOTIVE_ENABLE_HTTP_LOGS" envDefault:"false"`
-	EnableDeployLogs bool `env:"LOCOMOTIVE_ENABLE_DEPLOY_LOGS" envDefault:"true"`
+	EnableHttpLogs   bool `env:"ENABLE_HTTP_LOGS" envDefault:"false"`
+	EnableDeployLogs bool `env:"ENABLE_DEPLOY_LOGS" envDefault:"true"`
 }

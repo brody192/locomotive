@@ -7,7 +7,7 @@ import (
 	"github.com/flexstack/uuid"
 )
 
-func VerifyAllServicesExistWithinEnvironment(g *GraphQLClient, services []uuid.UUID, environmentID uuid.UUID) (bool, []uuid.UUID, error) {
+func VerifyAllServicesExistWithinEnvironment(g *GraphQLClient, services []uuid.UUID, environmentID uuid.UUID) (bool, []uuid.UUID, []uuid.UUID, error) {
 	environment := &queries.EnvironmentData{}
 
 	variables := map[string]any{
@@ -15,9 +15,10 @@ func VerifyAllServicesExistWithinEnvironment(g *GraphQLClient, services []uuid.U
 	}
 
 	if err := g.Client.Exec(context.Background(), queries.EnvironmentQuery, &environment, variables); err != nil {
-		return false, nil, err
+		return false, nil, nil, err
 	}
 
+	foundServices := []uuid.UUID{}
 	missingServices := []uuid.UUID{}
 
 	for _, service := range services {
@@ -30,14 +31,12 @@ func VerifyAllServicesExistWithinEnvironment(g *GraphQLClient, services []uuid.U
 			}
 		}
 
-		if !found {
+		if found {
+			foundServices = append(foundServices, service)
+		} else {
 			missingServices = append(missingServices, service)
 		}
 	}
 
-	if len(missingServices) > 0 {
-		return false, missingServices, nil
-	}
-
-	return true, nil, nil
+	return (len(missingServices) == 0), foundServices, missingServices, nil
 }
