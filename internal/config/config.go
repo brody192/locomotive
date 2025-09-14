@@ -3,11 +3,15 @@ package config
 import (
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
+	"reflect"
+	"strconv"
 	"strings"
 
 	"github.com/brody192/locomotive/internal/logger"
 	"github.com/caarlos0/env/v11"
+	"github.com/flexstack/uuid"
 	"github.com/joho/godotenv"
 )
 
@@ -23,7 +27,46 @@ func init() {
 
 	errors := []error{}
 
-	if err := env.Parse(&Global); err != nil {
+	if err := env.ParseWithOptions(&Global, env.Options{
+		Prefix: "LOCOMOTIVE_",
+		FuncMap: map[reflect.Type]env.ParserFunc{
+			reflect.TypeOf(uuid.UUID{}): func(envVar string) (any, error) {
+				return uuid.FromString(strings.TrimSpace(envVar))
+			},
+			reflect.TypeOf([]uuid.UUID{}): func(envVar string) (any, error) {
+				envVarSplit := strings.Split(envVar, ",")
+
+				uuids := []uuid.UUID{}
+
+				for _, envVarSplitItem := range envVarSplit {
+					envVarSplitItemTrimmed := strings.TrimSpace(envVarSplitItem)
+
+					if envVarSplitItemTrimmed == "" {
+						continue
+					}
+
+					uuid, err := uuid.FromString(envVarSplitItemTrimmed)
+					if err != nil {
+						return nil, err
+					}
+
+					uuids = append(uuids, uuid)
+				}
+
+				return uuids, nil
+			},
+			reflect.TypeOf(false): func(envVar string) (any, error) {
+				return strconv.ParseBool(strings.TrimSpace(envVar))
+			},
+			reflect.TypeOf(url.URL{}): func(envVar string) (any, error) {
+				if u, err := url.Parse(strings.TrimSpace(envVar)); err != nil {
+					return nil, err
+				} else {
+					return *u, nil
+				}
+			},
+		},
+	}); err != nil {
 		if er, ok := err.(env.AggregateError); ok {
 			errors = append(errors, er.Errors...)
 		} else {
@@ -39,6 +82,8 @@ func init() {
 		logger.Stderr.Error("error parsing environment variables", logger.ErrAttr(errors[0]))
 		os.Exit(1)
 	}
+
+	Global.WebhookMode = WebhookMode(strings.ToLower(strings.TrimSpace(string(Global.WebhookMode))))
 
 	if _, ok := WebhookModeToConfig[Global.WebhookMode]; !ok {
 		logger.Stderr.Warn(fmt.Sprintf("invalid or unsupported webhook mode: %s, using default mode: %s", Global.WebhookMode, DefaultWebhookMode))

@@ -11,15 +11,22 @@ func (h *AdditionalHeaders) UnmarshalText(envByte []byte) error {
 	}
 
 	envString := string(envByte)
+
+	envStringTrimmed := strings.TrimSpace(envString)
+
+	if envStringTrimmed == "" {
+		return fmt.Errorf("AdditionalHeaders is empty")
+	}
+
 	headers := make(map[string]string)
 
-	headerPairs := strings.Split(envString, ";")
+	headerPairs := strings.Split(envStringTrimmed, ";")
 
 	for _, header := range headerPairs {
 		keyValue := strings.SplitN(header, "=", 2)
 
 		if len(keyValue) != 2 {
-			return fmt.Errorf("header key value pair must be in format k=v")
+			return fmt.Errorf("header key value pair must be in format k=v; found %s", header)
 		}
 
 		headers[strings.TrimSpace(keyValue[0])] = strings.TrimSpace(keyValue[1])
