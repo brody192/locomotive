@@ -43,7 +43,7 @@ type config struct {
 // OtelConfig holds OTEL-specific configuration (uses OTEL_ prefix, not LOCOMOTIVE_).
 type OtelConfig struct {
 	Enabled         bool   `env:"OTEL_ENABLED" envDefault:"false"`
-	Endpoint        string `env:"OTEL_EXPORTER_OTLP_ENDPOINT" envDefault:"otel-collector.railway.internal:4317"`
-	ServiceName     string `env:"OTEL_SERVICE_NAME" envDefault:"locomotive"`
+	Endpoint        string `env:"OTEL_EXPORTER_OTLP_ENDPOINT"`
+	ServiceName     string `env:"OTEL_SERVICE_NAME"`
 	EnvironmentName string `env:"OTEL_ENVIRONMENT_NAME"`
 }

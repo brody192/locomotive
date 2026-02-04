@@ -12,6 +12,7 @@ With tailored support for:
 - Loki
 - Sentry
 - Papertrail
+- **OpenTelemetry (OTLP)** - Send logs directly to any OTLP-compatible collector
 
 And more with the standard JSON and JSON Lines modes.
 
@@ -73,7 +74,7 @@ Configuration is done through environment variables. See explanation and example
 
 - `LOCOMOTIVE_WEBHOOK_URL` - The URL to send the webhook to.
 
-    **Required**.
+    **Required** (unless using OTEL mode).
 
     - Example for Datadog: `https://http-intake.logs.datadoghq.com/api/v2/logs`
     - Example for Axiom: `https://api.axiom.co/v1/datasets/<DATASET_NAME>/ingest`
@@ -138,6 +139,45 @@ Configuration is done through environment variables. See explanation and example
     **Optional**.
 
     - Default: `true`
+
+    </br>
+
+### OTEL Mode Variables
+
+When `OTEL_ENABLED=true`, logs are sent via OTLP gRPC instead of HTTP webhooks. This is useful for sending logs to OpenTelemetry collectors like the [OpenTelemetry Collector](https://opentelemetry.io/docs/collector/), [SigNoz](https://signoz.io/), [Grafana Alloy](https://grafana.com/docs/alloy/), or any other OTLP-compatible backend.
+
+- `OTEL_ENABLED` - Enable OTEL mode.
+
+    **Optional**.
+
+    - Default: `false`
+    - When `true`, logs are sent via OTLP gRPC instead of HTTP webhooks.
+    - When `true`, `LOCOMOTIVE_WEBHOOK_URL` is not required.
+
+    </br>
+
+- `OTEL_EXPORTER_OTLP_ENDPOINT` - The OTLP gRPC endpoint to send logs to.
+
+    **Required when `OTEL_ENABLED=true`**.
+
+    - Example: `otel-collector.railway.internal:4317`
+    - Example: `localhost:4317`
+
+    </br>
+
+- `OTEL_SERVICE_NAME` - The service name to use for logs.
+
+    **Required when `OTEL_ENABLED=true`**.
+
+    - This is added as the `service.name` resource attribute.
+
+    </br>
+
+- `OTEL_ENVIRONMENT_NAME` - The environment name to use for logs.
+
+    **Required when `OTEL_ENABLED=true`**.
+
+    - This is added as the `deployment.environment.name` resource attribute.
 
     </br>
 
@@ -224,6 +264,32 @@ Configuration is done through environment variables. See explanation and example
 - `LOCOMOTIVE_ADDITIONAL_HEADERS` - `X-Sentry-Auth=Sentry sentry_key=<SENTRY_KEY>`
 
     The key can again be found in the 'Client Keys (DSN)' section of the Sentry project settings; it will be the user part of the given DSN.
+
+    </br>
+
+#### OpenTelemetry (OTLP)
+
+OTEL mode sends logs directly via OTLP gRPC, bypassing the webhook system entirely. This is ideal for sending logs to OpenTelemetry-compatible backends.
+
+- `OTEL_ENABLED` - `true`
+
+- `OTEL_EXPORTER_OTLP_ENDPOINT` - The gRPC endpoint of your OTLP collector.
+
+    Example: `otel-collector.railway.internal:4317`
+
+- `OTEL_SERVICE_NAME` - The service name for your logs.
+
+    Example: `my-railway-app`
+
+- `OTEL_ENVIRONMENT_NAME` - The deployment environment.
+
+    Example: `production`
+
+**Notes:**
+
+- Logs are sent using insecure gRPC (no TLS), which is appropriate for internal Railway networking.
+- HTTP log severity is automatically set based on status code: 5XX → ERROR, 4XX → WARN, others → INFO.
+- Railway metadata is added as log attributes with the `railway.*` prefix.
 
     </br>
 

@@ -105,6 +105,19 @@ func init() {
 		errors = append(errors, fmt.Errorf("either OTEL_ENABLED=true or LOCOMOTIVE_WEBHOOK_URL must be set"))
 	}
 
+	// Validate required OTEL fields when OTEL is enabled
+	if Otel.Enabled {
+		if Otel.Endpoint == "" {
+			errors = append(errors, fmt.Errorf("OTEL_EXPORTER_OTLP_ENDPOINT is required when OTEL_ENABLED=true"))
+		}
+		if Otel.ServiceName == "" {
+			errors = append(errors, fmt.Errorf("OTEL_SERVICE_NAME is required when OTEL_ENABLED=true"))
+		}
+		if Otel.EnvironmentName == "" {
+			errors = append(errors, fmt.Errorf("OTEL_ENVIRONMENT_NAME is required when OTEL_ENABLED=true"))
+		}
+	}
+
 	if len(errors) > 0 {
 		logger.Stderr.Error("error parsing environment variables", logger.ErrorsAttr(errors...))
 		os.Exit(1)
