@@ -5,7 +5,9 @@ import (
 	"log/slog"
 	"sync/atomic"
 
+	"github.com/brody192/locomotive/internal/config"
 	"github.com/brody192/locomotive/internal/logger"
+	"github.com/brody192/locomotive/internal/otel"
 	"github.com/brody192/locomotive/internal/railway/subscribe/environment_logs"
 	"github.com/brody192/locomotive/internal/railway/subscribe/http_logs"
 	"github.com/brody192/locomotive/internal/webhook"
@@ -18,15 +20,23 @@ func handleDeployLogsAsync(ctx context.Context, deployLogsProcessed *atomic.Int6
 			case <-ctx.Done():
 				return
 			case logs := <-serviceLogTrack:
-				if serializedLogs, err := webhook.SendDeployLogsWebhook(logs); err != nil {
+				var err error
+				var serializedLogs []byte
+
+				if config.Otel.Enabled {
+					err = otel.EmitEnvironmentLogs(ctx, logs)
+				} else {
+					serializedLogs, err = webhook.SendDeployLogsWebhook(logs)
+				}
+
+				if err != nil {
 					attrs := []any{logger.ErrAttr(err)}
 
 					if serializedLogs != nil {
 						attrs = append(attrs, slog.String("serialized_logs", string(serializedLogs)))
 					}
 
-					logger.Stderr.Error("error sending deploy logs webhook(s)", attrs...)
-
+					logger.Stderr.Error("error sending deploy logs", attrs...)
 					continue
 				}
 
@@ -43,15 +53,23 @@ func handleHttpLogsAsync(ctx context.Context, httpLogsProcessed *atomic.Int64, h
 			case <-ctx.Done():
 				return
 			case logs := <-httpLogTrack:
-				if serializedLogs, err := webhook.SendHttpLogsWebhook(logs); err != nil {
+				var err error
+				var serializedLogs []byte
+
+				if config.Otel.Enabled {
+					err = otel.EmitHttpLogs(ctx, logs)
+				} else {
+					serializedLogs, err = webhook.SendHttpLogsWebhook(logs)
+				}
+
+				if err != nil {
 					attrs := []any{logger.ErrAttr(err)}
 
 					if serializedLogs != nil {
 						attrs = append(attrs, slog.String("serialized_logs", string(serializedLogs)))
 					}
 
-					logger.Stderr.Error("error sending http logs webhook(s)", attrs...)
-
+					logger.Stderr.Error("error sending http logs", attrs...)
 					continue
 				}
 

@@ -16,6 +16,7 @@ import (
 )
 
 var Global = config{}
+var Otel = OtelConfig{}
 
 func init() {
 	if _, err := os.Stat(".env"); err == nil {
@@ -26,6 +27,15 @@ func init() {
 	}
 
 	errors := []error{}
+
+	// Parse OTEL config first (uses OTEL_ prefix, not LOCOMOTIVE_)
+	if err := env.Parse(&Otel); err != nil {
+		if er, ok := err.(env.AggregateError); ok {
+			errors = append(errors, er.Errors...)
+		} else {
+			errors = append(errors, err)
+		}
+	}
 
 	if err := env.ParseWithOptions(&Global, env.Options{
 		Prefix: "LOCOMOTIVE_",
@@ -61,6 +71,11 @@ func init() {
 			reflect.TypeOf(url.URL{}): func(envVar string) (any, error) {
 				envVarTrimmed := strings.TrimSpace(envVar)
 
+				// Allow empty URL when OTEL is enabled
+				if envVarTrimmed == "" {
+					return url.URL{}, nil
+				}
+
 				if !schemeRegex.MatchString(envVarTrimmed) {
 					logger.Stderr.Warn("found webhook url without scheme, adding default scheme: https")
 					envVarTrimmed = "https://" + envVarTrimmed
@@ -83,6 +98,11 @@ func init() {
 
 	if (!Global.EnableDeployLogs && !Global.EnableHttpLogs) && len(errors) == 0 {
 		errors = append(errors, fmt.Errorf("at least one of ENABLE_DEPLOY_LOGS or ENABLE_HTTP_LOGS must be true"))
+	}
+
+	// Validate that either OTEL is enabled or WebhookUrl is set
+	if !Otel.Enabled && Global.WebhookUrl.Host == "" && len(errors) == 0 {
+		errors = append(errors, fmt.Errorf("either OTEL_ENABLED=true or LOCOMOTIVE_WEBHOOK_URL must be set"))
 	}
 
 	if len(errors) > 0 {

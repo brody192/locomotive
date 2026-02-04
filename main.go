@@ -5,10 +5,12 @@ import (
 	"log/slog"
 	"os"
 	"sync/atomic"
+	"time"
 
 	"github.com/brody192/locomotive/internal/config"
 	"github.com/brody192/locomotive/internal/errgroup"
 	"github.com/brody192/locomotive/internal/logger"
+	"github.com/brody192/locomotive/internal/otel"
 	"github.com/brody192/locomotive/internal/railway"
 	"github.com/brody192/locomotive/internal/railway/subscribe/environment_logs"
 	"github.com/brody192/locomotive/internal/railway/subscribe/http_logs"
@@ -16,6 +18,27 @@ import (
 
 func main() {
 	logger.Stdout.Info("Preparing the locomotive for departure...")
+
+	// Initialize OTEL if enabled
+	if config.Otel.Enabled {
+		ctx := context.Background()
+		if err := otel.Setup(ctx, otel.Config{
+			Enabled:         config.Otel.Enabled,
+			Endpoint:        config.Otel.Endpoint,
+			ServiceName:     config.Otel.ServiceName,
+			EnvironmentName: config.Otel.EnvironmentName,
+		}); err != nil {
+			logger.Stderr.Error("failed to setup OTEL", logger.ErrAttr(err))
+			os.Exit(1)
+		}
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := otel.Shutdown(shutdownCtx); err != nil {
+				logger.Stderr.Error("failed to shutdown OTEL", logger.ErrAttr(err))
+			}
+		}()
+	}
 
 	gqlClient, err := railway.NewClient(&railway.GraphQLClient{
 		AuthToken:           config.Global.RailwayApiKey,
@@ -44,14 +67,27 @@ func main() {
 		os.Exit(1)
 	}
 
-	logger.Stdout.Info("The locomotive is ready to depart...",
-		slog.String("webhook_url_host", config.Global.WebhookUrl.Host),
+	logAttrs := []any{
 		slog.Any("service_ids", config.Global.ServiceIds),
 		slog.Any("environment_id", config.Global.EnvironmentId),
-		slog.Any("webhook_mode", config.Global.WebhookMode),
 		slog.Bool("enable_http_logs", config.Global.EnableHttpLogs),
 		slog.Bool("enable_deploy_logs", config.Global.EnableDeployLogs),
-	)
+		slog.Bool("otel_enabled", config.Otel.Enabled),
+	}
+
+	if config.Otel.Enabled {
+		logAttrs = append(logAttrs,
+			slog.String("otel_endpoint", config.Otel.Endpoint),
+			slog.String("otel_service_name", config.Otel.ServiceName),
+		)
+	} else {
+		logAttrs = append(logAttrs,
+			slog.String("webhook_url_host", config.Global.WebhookUrl.Host),
+			slog.Any("webhook_mode", config.Global.WebhookMode),
+		)
+	}
+
+	logger.Stdout.Info("The locomotive is ready to depart...", logAttrs...)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

@@ -30,7 +30,7 @@ type config struct {
 	EnvironmentId uuid.UUID   `env:"ENVIRONMENT_ID,required,notEmpty"`
 	ServiceIds    []uuid.UUID `env:"SERVICE_IDS,required,notEmpty"`
 
-	WebhookUrl        url.URL           `env:"WEBHOOK_URL,required,notEmpty"`
+	WebhookUrl        url.URL           `env:"WEBHOOK_URL"`
 	AdditionalHeaders AdditionalHeaders `env:"ADDITIONAL_HEADERS"`
 	WebhookMode       WebhookMode       `env:"WEBHOOK_MODE" envDefault:"json"`
 
@@ -38,4 +38,12 @@ type config struct {
 
 	EnableHttpLogs   bool `env:"ENABLE_HTTP_LOGS" envDefault:"false"`
 	EnableDeployLogs bool `env:"ENABLE_DEPLOY_LOGS" envDefault:"true"`
+}
+
+// OtelConfig holds OTEL-specific configuration (uses OTEL_ prefix, not LOCOMOTIVE_).
+type OtelConfig struct {
+	Enabled         bool   `env:"OTEL_ENABLED" envDefault:"false"`
+	Endpoint        string `env:"OTEL_EXPORTER_OTLP_ENDPOINT" envDefault:"otel-collector.railway.internal:4317"`
+	ServiceName     string `env:"OTEL_SERVICE_NAME" envDefault:"locomotive"`
+	EnvironmentName string `env:"OTEL_ENVIRONMENT_NAME"`
 }
