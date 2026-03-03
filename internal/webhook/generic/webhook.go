@@ -27,7 +27,7 @@ func SendWebhookForDeployLogs(logs []environment_logs.EnvironmentLogWithMetadata
 		return nil, fmt.Errorf("failed to reconstruct deploy log lines: %w", err)
 	}
 
-	return payload, sendRawWebhook(payload, config.Global.WebhookUrl, config.Global.AdditionalHeaders, client)
+	return payload, SendRawWebhook(payload, config.Global.WebhookUrl, config.Global.AdditionalHeaders, client)
 }
 
 func SendWebhookForHttpLogs(logs []http_logs.DeploymentHttpLogWithMetadata, client *http.Client) (serializedLogs []byte, err error) {
@@ -36,10 +36,10 @@ func SendWebhookForHttpLogs(logs []http_logs.DeploymentHttpLogWithMetadata, clie
 		return nil, fmt.Errorf("failed to reconstruct http log lines: %w", err)
 	}
 
-	return payload, sendRawWebhook(payload, config.Global.WebhookUrl, config.Global.AdditionalHeaders, client)
+	return payload, SendRawWebhook(payload, config.Global.WebhookUrl, config.Global.AdditionalHeaders, client)
 }
 
-func sendRawWebhook(logs []byte, url url.URL, additionalHeaders config.AdditionalHeaders, client *http.Client) error {
+func SendRawWebhook(logs []byte, url url.URL, additionalHeaders config.AdditionalHeaders, client *http.Client) error {
 	req, err := http.NewRequest(http.MethodPost, url.String(), bytes.NewReader(logs))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)

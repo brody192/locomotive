@@ -12,6 +12,7 @@ import (
 	"github.com/brody192/locomotive/internal/railway"
 	"github.com/brody192/locomotive/internal/railway/subscribe/environment_logs"
 	"github.com/brody192/locomotive/internal/railway/subscribe/http_logs"
+	"github.com/brody192/locomotive/internal/webhook"
 )
 
 func main() {
@@ -56,16 +57,10 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	serviceLogTrack := make(chan []environment_logs.EnvironmentLogWithMetadata)
-	httpLogTrack := make(chan []http_logs.DeploymentHttpLogWithMetadata)
-
 	deployLogsProcessed := atomic.Int64{}
 	httpLogsProcessed := atomic.Int64{}
 
 	reportStatusAsync(&deployLogsProcessed, &httpLogsProcessed)
-
-	handleDeployLogsAsync(ctx, &deployLogsProcessed, serviceLogTrack)
-	handleHttpLogsAsync(ctx, &httpLogsProcessed, httpLogTrack)
 
 	errGroup := errgroup.NewErrGroup()
 
@@ -75,7 +70,10 @@ func main() {
 			return nil
 		}
 
-		return startStreamingDeployLogs(ctx, gqlClient, serviceLogTrack, config.Global.EnvironmentId, config.Global.ServiceIds)
+		return runLogPipeline(ctx, "deploy-logs", webhook.SerializeDeployLogs,
+			func(ctx context.Context, track chan []environment_logs.EnvironmentLogWithMetadata) error {
+				return environment_logs.SubscribeToServiceLogs(ctx, gqlClient, track, config.Global.EnvironmentId, config.Global.ServiceIds)
+			}, &deployLogsProcessed)
 	})
 
 	errGroup.Go(func() error {
@@ -84,7 +82,10 @@ func main() {
 			return nil
 		}
 
-		return startStreamingHttpLogs(ctx, gqlClient, httpLogTrack, config.Global.EnvironmentId, config.Global.ServiceIds)
+		return runLogPipeline(ctx, "http-logs", webhook.SerializeHttpLogs,
+			func(ctx context.Context, track chan []http_logs.DeploymentHttpLogWithMetadata) error {
+				return http_logs.SubscribeToHttpLogs(ctx, gqlClient, track, config.Global.EnvironmentId, config.Global.ServiceIds)
+			}, &httpLogsProcessed)
 	})
 
 	logger.Stdout.Info("The locomotive is waiting for cargo...")

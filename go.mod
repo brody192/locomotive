@@ -12,7 +12,6 @@ require (
 	github.com/flexstack/uuid v1.1.0
 	github.com/hasura/go-graphql-client v0.14.4
 	github.com/joho/godotenv v1.5.1
-	github.com/sethvargo/go-retry v0.3.0
 	github.com/tidwall/gjson v1.18.0
 	github.com/tidwall/sjson v1.2.5
 )

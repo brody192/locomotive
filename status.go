@@ -17,7 +17,7 @@ func reportStatusAsync(deployLogsProcessed *atomic.Int64, httpLogsProcessed *ato
 	var prevDeployLogs, prevHttpLogs int64
 
 	go func() {
-		t := time.NewTicker(50 * time.Millisecond)
+		t := time.NewTicker((50 * time.Millisecond))
 		defer t.Stop()
 
 		for range t.C {
