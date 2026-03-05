@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"fmt"
 	"strconv"
-	"unsafe"
 
 	"github.com/brody192/locomotive/internal/logline/reconstructor"
 	"github.com/brody192/locomotive/internal/railway/subscribe/environment_logs"
@@ -36,5 +35,5 @@ func EnvironmentLogStreams(logs []environment_logs.EnvironmentLogWithMetadata) (
 		}
 	}
 
-	return unsafe.Slice(unsafe.StringData(streams), len(streams)), nil
+	return []byte(streams), nil
 }

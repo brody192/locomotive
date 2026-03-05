@@ -44,19 +44,23 @@ func (g *GraphQLClient) CreateWebSocketSubscription(ctx context.Context, payload
 	c.SetReadLimit(-1)
 
 	if err := c.Write(ctx, websocket.MessageText, connectionInit); err != nil {
+		c.CloseNow()
 		return nil, err
 	}
 
 	_, ackMessage, err := c.Read(ctx)
 	if err != nil {
+		c.CloseNow()
 		return nil, err
 	}
 
 	if !bytes.Equal(ackMessage, connectionAck) {
+		c.CloseNow()
 		return nil, errors.New("did not receive connection ack from server")
 	}
 
 	if err := c.Write(ctx, websocket.MessageText, payloadBytes); err != nil {
+		c.CloseNow()
 		return nil, err
 	}
 

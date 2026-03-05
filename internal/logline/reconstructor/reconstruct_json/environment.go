@@ -7,7 +7,6 @@ import (
 	"slices"
 	"strconv"
 	"time"
-	"unsafe"
 
 	"github.com/brody192/locomotive/internal/logline/reconstructor"
 	"github.com/brody192/locomotive/internal/railway/subscribe/environment_logs"
@@ -30,10 +29,10 @@ func EnvironmentLogsJsonArrayWithConfig(logs []environment_logs.EnvironmentLogWi
 			return nil, err
 		}
 
-		array, _ = sjson.SetRaw(array, strconv.Itoa(i), unsafe.String(unsafe.SliceData(logObject), len(logObject)))
+		array, _ = sjson.SetRaw(array, strconv.Itoa(i), string(logObject))
 	}
 
-	return unsafe.Slice(unsafe.StringData(array), len(array)), nil
+	return []byte(array), nil
 }
 
 // reconstruct multiple deployment logs into json lines
@@ -74,17 +73,19 @@ func environmentLogJson(log environment_logs.EnvironmentLogWithMetadata, config 
 	object, _ = sjson.Set(object, "severity", log.Log.Severity)
 
 	for i := range log.Log.Attributes {
+		key := log.Log.Attributes[i].Key
+
 		// if the attribute is a reserved attribute, add an underscore to the beginning of the key
-		if slices.Contains(config.ReserverdAttributes, log.Log.Attributes[i].Key) {
-			log.Log.Attributes[i].Key = fmt.Sprintf("_%s", log.Log.Attributes[i].Key)
+		if slices.Contains(config.ReserverdAttributes, key) {
+			key = fmt.Sprintf("_%s", key)
 		}
 
-		object, _ = sjson.SetRaw(object, log.Log.Attributes[i].Key, log.Log.Attributes[i].Value)
+		object, _ = sjson.SetRaw(object, key, log.Log.Attributes[i].Value)
 	}
 
 	if config.TimestampAttribute != "" {
 		object, _ = sjson.Set(object, config.TimestampAttribute, cmp.Or(reconstructor.TryExtractTimestamp(log), log.Log.Timestamp).Format(time.RFC3339Nano))
 	}
 
-	return unsafe.Slice(unsafe.StringData(object), len(object)), nil
+	return []byte(object), nil
 }

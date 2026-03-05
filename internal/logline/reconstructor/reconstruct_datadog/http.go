@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strconv"
 	"time"
-	"unsafe"
 
 	"github.com/brody192/locomotive/internal/railway/subscribe/http_logs"
 	"github.com/brody192/locomotive/internal/util"
@@ -17,7 +16,7 @@ func HttpLogsJsonArray(logs []http_logs.DeploymentHttpLogWithMetadata) ([]byte, 
 	array := `[]`
 
 	for i := range logs {
-		array, _ = sjson.SetRaw(array, strconv.Itoa(i), unsafe.String(unsafe.SliceData(logs[i].Log), len(logs[i].Log)))
+		array, _ = sjson.SetRaw(array, strconv.Itoa(i), string(logs[i].Log))
 
 		for key, value := range logs[i].Metadata {
 			array, _ = sjson.Set(array, fmt.Sprintf("%d._metadata.%s", i, key), value)
@@ -44,5 +43,5 @@ func HttpLogsJsonArray(logs []http_logs.DeploymentHttpLogWithMetadata) ([]byte, 
 		array, _ = sjson.Set(array, fmt.Sprintf("%d.host", i), hostname)
 	}
 
-	return unsafe.Slice(unsafe.StringData(array), len(array)), nil
+	return []byte(array), nil
 }

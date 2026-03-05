@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
-	"unsafe"
 
 	"github.com/brody192/locomotive/internal/railway/subscribe/http_logs"
 	"github.com/tidwall/sjson"
@@ -36,5 +35,5 @@ func HttpLogStreams(logs []http_logs.DeploymentHttpLogWithMetadata) ([]byte, err
 		}
 	}
 
-	return unsafe.Slice(unsafe.StringData(streams), len(streams)), nil
+	return []byte(streams), nil
 }

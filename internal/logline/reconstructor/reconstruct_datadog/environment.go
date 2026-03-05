@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"fmt"
 	"time"
-	"unsafe"
 
 	"github.com/brody192/locomotive/internal/logline/reconstructor"
 	"github.com/brody192/locomotive/internal/railway/subscribe/environment_logs"
@@ -49,5 +48,5 @@ func EnvironmentLogsJsonArray(logs []environment_logs.EnvironmentLogWithMetadata
 		array, _ = sjson.Set(array, fmt.Sprintf("%d.host", i), hostname)
 	}
 
-	return unsafe.Slice(unsafe.StringData(array), len(array)), nil
+	return []byte(array), nil
 }

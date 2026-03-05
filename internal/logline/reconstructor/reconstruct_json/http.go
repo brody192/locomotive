@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strconv"
 	"time"
-	"unsafe"
 
 	"github.com/brody192/locomotive/internal/railway/subscribe/http_logs"
 	"github.com/tidwall/gjson"
@@ -27,10 +26,10 @@ func HttpLogsJsonArrayWithConfig(logs []http_logs.DeploymentHttpLogWithMetadata,
 			return nil, err
 		}
 
-		array, _ = sjson.SetRaw(array, strconv.Itoa(i), unsafe.String(unsafe.SliceData(logObject), len(logObject)))
+		array, _ = sjson.SetRaw(array, strconv.Itoa(i), string(logObject))
 	}
 
-	return unsafe.Slice(unsafe.StringData(array), len(array)), nil
+	return []byte(array), nil
 }
 
 // reconstruct multiple http logs into json lines
@@ -60,7 +59,7 @@ func HttpLogsJsonLinesWithConfig(logs []http_logs.DeploymentHttpLogWithMetadata,
 
 // reconstruct a single http log into a raw json object
 func httpLogLineJson(log http_logs.DeploymentHttpLogWithMetadata, config Config) ([]byte, error) {
-	object := unsafe.String(unsafe.SliceData(log.Log), len(log.Log))
+	object := string(log.Log)
 
 	for key, value := range log.Metadata {
 		object, _ = sjson.Set(object, fmt.Sprintf("_metadata.%s", key), value)
@@ -81,5 +80,5 @@ func httpLogLineJson(log http_logs.DeploymentHttpLogWithMetadata, config Config)
 		object, _ = sjson.Set(object, config.TimestampAttribute, log.Timestamp.Format(time.RFC3339Nano))
 	}
 
-	return unsafe.Slice(unsafe.StringData(object), len(object)), nil
+	return []byte(object), nil
 }

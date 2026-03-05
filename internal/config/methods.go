@@ -15,7 +15,8 @@ func (h *AdditionalHeaders) UnmarshalText(envByte []byte) error {
 	envStringTrimmed := strings.TrimSpace(envString)
 
 	if envStringTrimmed == "" {
-		return fmt.Errorf("AdditionalHeaders is empty")
+		*h = make(map[string]string)
+		return nil
 	}
 
 	headers := make(map[string]string)

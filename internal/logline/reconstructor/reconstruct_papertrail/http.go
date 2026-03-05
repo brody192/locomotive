@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"time"
-	"unsafe"
 
 	"github.com/brody192/locomotive/internal/railway/subscribe/http_logs"
 	"github.com/brody192/locomotive/internal/util"
@@ -41,7 +40,7 @@ func HttpLogsJsonLines(logs []http_logs.DeploymentHttpLogWithMetadata) ([]byte, 
 
 // reconstruct a single http log into a raw json object
 func httpLogLineJson(log http_logs.DeploymentHttpLogWithMetadata) ([]byte, error) {
-	object := unsafe.String(unsafe.SliceData(log.Log), len(log.Log))
+	object := string(log.Log)
 
 	for key, value := range log.Metadata {
 		object, _ = sjson.Set(object, fmt.Sprintf("_metadata.%s", key), value)
@@ -51,5 +50,5 @@ func httpLogLineJson(log http_logs.DeploymentHttpLogWithMetadata) ([]byte, error
 
 	object, _ = sjson.Set(object, "timestamp", log.Timestamp.Format(time.RFC3339Nano))
 
-	return unsafe.Slice(unsafe.StringData(object), len(object)), nil
+	return []byte(object), nil
 }

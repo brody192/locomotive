@@ -116,11 +116,16 @@ func SubscribeToHttpLogs(ctx context.Context, g *railway.GraphQLClient, logTrack
 					continue
 				}
 
-				logTrack <- append([]DeploymentHttpLogWithMetadata(nil), httpLogBuffer...)
-
+				toSend := append([]DeploymentHttpLogWithMetadata(nil), httpLogBuffer...)
 				httpLogBuffer = httpLogBuffer[:0]
 
 				bufferMutex.Unlock()
+
+				select {
+				case logTrack <- toSend:
+				case <-ctx.Done():
+					return
+				}
 			case logs := <-bufferedLogTrack:
 				bufferMutex.Lock()
 
@@ -154,7 +159,10 @@ func SubscribeToHttpLogs(ctx context.Context, g *railway.GraphQLClient, logTrack
 				defer activeDeploymentIds.Delete(deployment.ID)
 
 				if err := getHttpLogs(ctx, g, deployment, bufferedLogTrack, deploymentIdSlice); err != nil {
-					errorChan <- err
+					select {
+					case errorChan <- err:
+					default:
+					}
 				}
 			}()
 		}
@@ -182,7 +190,10 @@ func SubscribeToHttpLogs(ctx context.Context, g *railway.GraphQLClient, logTrack
 						defer activeDeploymentIds.Delete(deployment.ID)
 
 						if err := getHttpLogs(ctx, g, deployment, bufferedLogTrack, deploymentIdSlice); err != nil {
-							errorChan <- err
+							select {
+							case errorChan <- err:
+							default:
+							}
 						}
 					}()
 				}
@@ -197,9 +208,12 @@ func getHttpLogs(ctx context.Context, g *railway.GraphQLClient, initialDeploymen
 		return fmt.Errorf("failed to create subscription for deployment %s: %w", initialDeployment.ID, err)
 	}
 
-	defer subscribe.SafeConnCloseNow(conn)
+	defer func() { subscribe.SafeConnCloseNow(conn) }()
 
-	initTime := ctx.Value(funcInitTimeKey).(time.Time)
+	initTime, ok := ctx.Value(funcInitTimeKey).(time.Time)
+	if !ok {
+		return fmt.Errorf("missing or invalid init time in context for deployment %s", initialDeployment.ID)
+	}
 
 	logTimes := initialDeployment.CreatedAt
 
@@ -251,8 +265,6 @@ func getHttpLogs(ctx context.Context, g *railway.GraphQLClient, initialDeploymen
 				)
 
 				// Close old connection and create new one
-				subscribe.SafeConnCloseNow(conn)
-
 				newConn, err := resubscribeHttpLogsWithRetry(ctx, g, initialDeployment.ID, conn)
 				if err != nil {
 					return fmt.Errorf("failed to resubscribe for deployment %s: %w", initialDeployment.ID, err)
@@ -283,8 +295,6 @@ func getHttpLogs(ctx context.Context, g *railway.GraphQLClient, initialDeploymen
 				)
 
 				// Close old connection and create new one
-				subscribe.SafeConnCloseNow(conn)
-
 				newConn, err := resubscribeHttpLogsWithRetry(ctx, g, initialDeployment.ID, conn)
 				if err != nil {
 					logger.Stdout.Error("failed to resubscribe",
@@ -321,7 +331,7 @@ func getHttpLogs(ctx context.Context, g *railway.GraphQLClient, initialDeploymen
 					return fmt.Errorf("failed to get timestamp from http log: %w", err)
 				}
 
-				if (logTimestamp.Before(logTimes) || logTimes == logTimestamp) || logTimestamp.Before(initTime) {
+				if !logTimestamp.After(logTimes) || logTimestamp.Before(initTime) {
 					continue
 				}
 
@@ -360,7 +370,11 @@ func getHttpLogs(ctx context.Context, g *railway.GraphQLClient, initialDeploymen
 				continue
 			}
 
-			logTrack <- filteredHttpLogs
+			select {
+			case logTrack <- filteredHttpLogs:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
 		}
 	}
 }

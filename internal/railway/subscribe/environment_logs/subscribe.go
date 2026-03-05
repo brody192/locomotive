@@ -81,7 +81,7 @@ func SubscribeToServiceLogs(ctx context.Context, g *railway.GraphQLClient, logTr
 		return err
 	}
 
-	defer conn.CloseNow()
+	defer func() { conn.CloseNow() }()
 
 	LogTime := time.Now().UTC()
 
@@ -133,8 +133,8 @@ func SubscribeToServiceLogs(ctx context.Context, g *railway.GraphQLClient, logTr
 				continue
 			}
 
-			// on first subscription skip logs if they where logged before the first subscription, on resubscription skip logs if they where already processed
-			if logs.Payload.Data.EnvironmentLogs[i].Timestamp.Before(LogTime) || LogTime == logs.Payload.Data.EnvironmentLogs[i].Timestamp {
+			// on first subscription skip logs if they were logged before the first subscription, on resubscription skip logs if they were already processed
+			if !logs.Payload.Data.EnvironmentLogs[i].Timestamp.After(LogTime) {
 				// logger.Stdout.Debug("skipping stale log message")
 				continue
 			}
@@ -183,6 +183,10 @@ func SubscribeToServiceLogs(ctx context.Context, g *railway.GraphQLClient, logTr
 			continue
 		}
 
-		logTrack <- filteredLogs
+		select {
+		case logTrack <- filteredLogs:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 }

@@ -74,5 +74,7 @@ func SendRawWebhook(logs []byte, url url.URL, additionalHeaders config.Additiona
 		return fmt.Errorf("non success status code: %d; with body: %s", res.StatusCode, bodyStr)
 	}
 
+	io.Copy(io.Discard, res.Body)
+
 	return nil
 }

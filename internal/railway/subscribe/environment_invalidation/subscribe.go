@@ -70,7 +70,7 @@ func SubscribeToInvalidationRequests(ctx context.Context, g *railway.GraphQLClie
 		return err
 	}
 
-	defer conn.CloseNow()
+	defer func() { conn.CloseNow() }()
 
 	lastHash := ""
 
@@ -96,7 +96,7 @@ func SubscribeToInvalidationRequests(ctx context.Context, g *railway.GraphQLClie
 			return fmt.Errorf("error unmarshalling invalidation request: %w", err)
 		}
 
-		if invalidationRequest.Type != subscriptions.SubscriptionTypeNext || invalidationRequest.Type == subscriptions.SubscriptionTypeComplete {
+		if invalidationRequest.Type != subscriptions.SubscriptionTypeNext {
 			logger.Stdout.Debug("resubscribing",
 				slog.String("from", "SubscribeToInvalidationRequests_TypeNotNext"),
 				logger.ErrAttr(fmt.Errorf("log type not next: %s", invalidationRequest.Type)),
@@ -123,6 +123,10 @@ func SubscribeToInvalidationRequests(ctx context.Context, g *railway.GraphQLClie
 
 		lastHash = invalidationRequest.Payload.Data.CanvasInvalidation.ID
 
-		environmentHashTrack <- invalidationRequest.Payload.Data.CanvasInvalidation.ID
+		select {
+		case environmentHashTrack <- invalidationRequest.Payload.Data.CanvasInvalidation.ID:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 }

@@ -23,13 +23,17 @@ func SubscribeToDeploymentIdChanges(ctx context.Context, g *railway.GraphQLClien
 		"id": environmentId,
 	}
 
-	if err := g.Client.Exec(context.Background(), queries.EnvironmentQuery, &environment, variables); err != nil {
+	if err := g.Client.Exec(ctx, queries.EnvironmentQuery, &environment, variables); err != nil {
 		return err
 	}
 
 	deploymentIdSlice.AppendMany(findSuccessfulDeploymentsIdsForWantedServiceIds(environment, serviceIds))
 
-	changeDetected <- struct{}{}
+	select {
+	case changeDetected <- struct{}{}:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 
 	environmentHashTrack := make(chan string)
 	errorChan := make(chan error, 1)
@@ -58,7 +62,7 @@ func SubscribeToDeploymentIdChanges(ctx context.Context, g *railway.GraphQLClien
 
 			environment := &queries.EnvironmentData{}
 
-			if err := g.Client.Exec(context.Background(), queries.EnvironmentQuery, &environment, variables); err != nil {
+			if err := g.Client.Exec(ctx, queries.EnvironmentQuery, &environment, variables); err != nil {
 				return fmt.Errorf("error getting environment data for new environment hash: %w", err)
 			}
 
@@ -89,7 +93,11 @@ func SubscribeToDeploymentIdChanges(ctx context.Context, g *railway.GraphQLClien
 
 			if deploymentsChanged {
 				logger.Stdout.Debug("deployment id(s) changed for wanted service id(s)", slog.Any("deployment_ids", deploymentIdSlice.Get()))
-				changeDetected <- struct{}{}
+				select {
+				case changeDetected <- struct{}{}:
+				case <-ctx.Done():
+					return ctx.Err()
+				}
 			}
 		}
 	}

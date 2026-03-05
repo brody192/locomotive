@@ -5,7 +5,6 @@ import (
 	"cmp"
 	"fmt"
 	"time"
-	"unsafe"
 
 	"github.com/brody192/locomotive/internal/logline/reconstructor"
 	"github.com/brody192/locomotive/internal/railway/subscribe/environment_logs"
@@ -57,5 +56,5 @@ func environmentLogJson(log environment_logs.EnvironmentLogWithMetadata) ([]byte
 
 	object, _ = sjson.Set(object, "timestamp", cmp.Or(reconstructor.TryExtractTimestamp(log), log.Log.Timestamp).Format(time.RFC3339Nano))
 
-	return unsafe.Slice(unsafe.StringData(object), len(object)), nil
+	return []byte(object), nil
 }
