@@ -16,6 +16,10 @@ import (
 )
 
 func main() {
+	os.Exit(run())
+}
+
+func run() int {
 	logger.Stdout.Info("Preparing the locomotive for departure...")
 
 	gqlClient, err := railway.NewClient(&railway.GraphQLClient{
@@ -25,13 +29,13 @@ func main() {
 	})
 	if err != nil {
 		logger.Stderr.Error("error creating graphql client", logger.ErrAttr(err))
-		os.Exit(1)
+		return 1
 	}
 
 	allServicesExist, foundServices, missingServices, err := railway.VerifyAllServicesExistWithinEnvironment(gqlClient, config.Global.ServiceIds, config.Global.EnvironmentId)
 	if err != nil {
 		logger.Stderr.Error("error verifying if services exist within the environment", logger.ErrAttr(err))
-		os.Exit(1)
+		return 1
 	}
 
 	if !allServicesExist {
@@ -42,7 +46,7 @@ func main() {
 			slog.Any("environment_id", config.Global.EnvironmentId),
 		)
 
-		os.Exit(1)
+		return 1
 	}
 
 	logger.Stdout.Info("The locomotive is ready to depart...",
@@ -54,17 +58,15 @@ func main() {
 		slog.Bool("enable_deploy_logs", config.Global.EnableDeployLogs),
 	)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	deployLogsProcessed := atomic.Int64{}
 	httpLogsProcessed := atomic.Int64{}
 
 	reportStatusAsync(&deployLogsProcessed, &httpLogsProcessed)
 
-	errGroup := errgroup.NewErrGroup()
+	errGroup, _ := errgroup.NewErrGroup(context.Background())
+	defer errGroup.Cancel()
 
-	errGroup.Go(func() error {
+	errGroup.Go(func(ctx context.Context) error {
 		if !config.Global.EnableDeployLogs {
 			logger.Stdout.Info("Deploy log transport is disabled. To enable it, set LOCOMOTIVE_ENABLE_DEPLOY_LOGS=true")
 			return nil
@@ -76,7 +78,7 @@ func main() {
 			}, &deployLogsProcessed)
 	})
 
-	errGroup.Go(func() error {
+	errGroup.Go(func(ctx context.Context) error {
 		if !config.Global.EnableHttpLogs {
 			logger.Stdout.Info("HTTP log transport is disabled. To enable it, set LOCOMOTIVE_ENABLE_HTTP_LOGS=true")
 			return nil
@@ -92,6 +94,8 @@ func main() {
 
 	if err := errGroup.Wait(); err != nil {
 		logger.Stderr.Error("error returned from subscription(s)", logger.ErrAttr(err))
-		os.Exit(1)
+		return 1
 	}
+
+	return 0
 }
