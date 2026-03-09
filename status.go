@@ -16,7 +16,7 @@ func reportStatusAsync(deployLogsProcessed *atomic.Int64, httpLogsProcessed *ato
 
 	go func() {
 		// Phase 1: poll at high frequency until the first logs arrive
-		t := time.NewTicker(50 * time.Millisecond)
+		t := time.NewTicker(500 * time.Millisecond)
 
 		for range t.C {
 			dl := deployLogsProcessed.Load()

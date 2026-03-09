@@ -4,7 +4,9 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"os/signal"
 	"sync/atomic"
+	"syscall"
 
 	"github.com/brody192/locomotive/internal/config"
 	"github.com/brody192/locomotive/internal/errgroup"
@@ -63,7 +65,10 @@ func run() int {
 
 	reportStatusAsync(&deployLogsProcessed, &httpLogsProcessed)
 
-	errGroup, _ := errgroup.NewErrGroup(context.Background())
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	errGroup, _ := errgroup.NewErrGroup(ctx)
 	defer errGroup.Cancel()
 
 	errGroup.Go(func(ctx context.Context) error {

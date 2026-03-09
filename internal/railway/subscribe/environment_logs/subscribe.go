@@ -12,11 +12,10 @@ import (
 	"github.com/brody192/locomotive/internal/railway"
 	"github.com/brody192/locomotive/internal/railway/gql/subscriptions"
 	"github.com/brody192/locomotive/internal/railway/subscribe"
-	"github.com/coder/websocket"
 	"github.com/flexstack/uuid"
 )
 
-func createEnvironmentLogSubscription(ctx context.Context, client *railway.GraphQLClient, environmentId uuid.UUID, serviceIds []uuid.UUID) (*websocket.Conn, error) {
+func createEnvironmentLogSubscription(ctx context.Context, client *railway.GraphQLClient, environmentId uuid.UUID, serviceIds []uuid.UUID) (*subscribe.Conn, error) {
 	payload := &subscriptions.EnvironmentLogsSubscriptionPayload{
 		Query: subscriptions.EnvironmentLogsSubscription,
 		Variables: &subscriptions.EnvironmentLogsSubscriptionVariables{
@@ -33,8 +32,8 @@ func createEnvironmentLogSubscription(ctx context.Context, client *railway.Graph
 }
 
 // resubscribeWithRetry handles reconnection logic with retries and proper context cancellation
-func resubscribeServiceLogsWithRetry(ctx context.Context, client *railway.GraphQLClient, environmentId uuid.UUID, serviceIds []uuid.UUID, conn *websocket.Conn) (*websocket.Conn, error) {
-	subscribe.SafeConnCloseNow(conn)
+func resubscribeServiceLogsWithRetry(ctx context.Context, client *railway.GraphQLClient, environmentId uuid.UUID, serviceIds []uuid.UUID, conn *subscribe.Conn) (*subscribe.Conn, error) {
+	conn.CloseNow()
 
 	// Track total retry time with a maximum of 3600 seconds (1 hour)
 	maxRetryDuration := 3600 * time.Second
@@ -86,7 +85,7 @@ func SubscribeToServiceLogs(ctx context.Context, g *railway.GraphQLClient, logTr
 	LogTime := time.Now().UTC()
 
 	for {
-		_, logPayload, err := subscribe.SafeConnRead(conn, ctx)
+		_, logPayload, err := conn.Read(ctx)
 		if err != nil {
 			logger.Stdout.Debug("resubscribing",
 				slog.String("from", "SubscribeToEnvironmentLogs"),

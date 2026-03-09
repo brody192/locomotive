@@ -1,6 +1,7 @@
 package webhook
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/brody192/locomotive/internal/config"
@@ -25,22 +26,6 @@ func SerializeHttpLogs(logs []http_logs.DeploymentHttpLogWithMetadata) ([]byte, 
 	return payload, nil
 }
 
-func SendPayload(payload []byte) error {
-	return generic.SendRawWebhook(payload, config.Global.WebhookUrl, config.Global.AdditionalHeaders, client)
-}
-
-func SendDeployLogsWebhook(logs []environment_logs.EnvironmentLogWithMetadata) (serializedLogs []byte, err error) {
-	payload, err := SerializeDeployLogs(logs)
-	if err != nil {
-		return nil, err
-	}
-	return payload, SendPayload(payload)
-}
-
-func SendHttpLogsWebhook(logs []http_logs.DeploymentHttpLogWithMetadata) (serializedLogs []byte, err error) {
-	payload, err := SerializeHttpLogs(logs)
-	if err != nil {
-		return nil, err
-	}
-	return payload, SendPayload(payload)
+func SendPayload(ctx context.Context, payload []byte) error {
+	return generic.SendRawWebhook(ctx, payload, config.Global.WebhookUrl, config.Global.AdditionalHeaders, client)
 }

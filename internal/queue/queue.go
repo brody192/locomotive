@@ -23,6 +23,7 @@ type (
 	maxBackoffParam        struct{ v time.Duration }
 	backoffMultiplierParam struct{ v float64 }
 	ttlParam               struct{ v time.Duration }
+	workersParam           struct{ v int }
 )
 
 func Name(name string) nameParam                               { return nameParam{name} }
@@ -32,6 +33,7 @@ func InitialBackoff(d time.Duration) initialBackoffParam        { return initial
 func MaxBackoff(d time.Duration) maxBackoffParam                { return maxBackoffParam{d} }
 func BackoffMultiplier(multiplier float64) backoffMultiplierParam { return backoffMultiplierParam{multiplier} }
 func TTL(d time.Duration) ttlParam                              { return ttlParam{d} }
+func Workers(n int) workersParam                                { return workersParam{n} }
 
 type config struct {
 	name              string
@@ -41,6 +43,7 @@ type config struct {
 	maxBackoff        time.Duration
 	backoffMultiplier float64
 	ttl               time.Duration
+	workers           int
 }
 
 func (c config) validate() error {
@@ -64,6 +67,9 @@ func (c config) validate() error {
 	}
 	if c.ttl <= 0 {
 		return fmt.Errorf("TTL must be positive, got %s", c.ttl)
+	}
+	if c.workers <= 0 {
+		return fmt.Errorf("Workers must be positive, got %d", c.workers)
 	}
 	return nil
 }
@@ -101,6 +107,7 @@ func NewDispatcher[T any](
 	maxBackoff maxBackoffParam,
 	backoffMultiplier backoffMultiplierParam,
 	ttl ttlParam,
+	workers workersParam,
 	fn DispatchFunc[T],
 ) (*Dispatcher[T], error) {
 	cfg := config{
@@ -111,6 +118,7 @@ func NewDispatcher[T any](
 		maxBackoff:        maxBackoff.v,
 		backoffMultiplier: backoffMultiplier.v,
 		ttl:               ttl.v,
+		workers:           workers.v,
 	}
 
 	if err := cfg.validate(); err != nil {
@@ -125,13 +133,16 @@ func NewDispatcher[T any](
 	}, nil
 }
 
-// Start begins the processing worker. Must be called before Enqueue.
+// Start begins the processing workers. Must be called before Enqueue.
 func (d *Dispatcher[T]) Start(ctx context.Context) {
 	d.ctx, d.cancel = context.WithCancel(ctx)
-	d.wg.Add(1)
-	go d.worker()
+	d.wg.Add(d.config.workers)
+	for range d.config.workers {
+		go d.worker()
+	}
 
 	d.log.Debug("dispatcher started",
+		slog.Int("workers", d.config.workers),
 		slog.Int("max_queue_size", d.config.maxQueueSize),
 		slog.Int("max_retries", d.config.maxRetries),
 		slog.Duration("ttl", d.config.ttl),
@@ -169,10 +180,11 @@ func (d *Dispatcher[T]) QueueDepth() int {
 	return len(d.items)
 }
 
-// Stop cancels processing and waits for the worker to finish draining.
+// Stop cancels processing and waits for all workers to finish, then drains remaining items.
 func (d *Dispatcher[T]) Stop() {
 	d.cancel()
 	d.wg.Wait()
+	d.drain()
 	d.log.Debug("dispatcher stopped")
 }
 
@@ -182,7 +194,6 @@ func (d *Dispatcher[T]) worker() {
 	for {
 		select {
 		case <-d.ctx.Done():
-			d.drain()
 			return
 		case item := <-d.items:
 			d.processItem(item)
@@ -201,6 +212,17 @@ func (d *Dispatcher[T]) drain() {
 	for range remaining {
 		select {
 		case item := <-d.items:
+			if age := time.Since(item.enqueuedAt); age > d.config.ttl {
+				d.log.Warn("dropping expired item during drain",
+					slog.Duration("age", age.Round(time.Millisecond)),
+					slog.Duration("ttl", d.config.ttl),
+				)
+				if d.OnDrop != nil {
+					d.OnDrop(item.payload, fmt.Sprintf("ttl exceeded during drain: age %s", age.Round(time.Millisecond)))
+				}
+				continue
+			}
+
 			if err := d.dispatch(context.Background(), item.payload); err != nil {
 				d.log.Warn("failed to dispatch item during drain",
 					slog.String("err", err.Error()),

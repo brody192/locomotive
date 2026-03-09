@@ -9,11 +9,12 @@ import (
 	"time"
 
 	"github.com/brody192/locomotive/internal/railway/gql/subscriptions"
+	"github.com/brody192/locomotive/internal/railway/subscribe"
 	"github.com/coder/websocket"
 	"github.com/flexstack/uuid"
 )
 
-func (g *GraphQLClient) CreateWebSocketSubscription(ctx context.Context, payload any) (*websocket.Conn, error) {
+func (g *GraphQLClient) CreateWebSocketSubscription(ctx context.Context, payload any) (*subscribe.Conn, error) {
 	subPayload := map[string]any{
 		"id":      uuid.Must(uuid.NewV4()),
 		"type":    subscriptions.SubscriptionTypeSubscribe,
@@ -64,5 +65,5 @@ func (g *GraphQLClient) CreateWebSocketSubscription(ctx context.Context, payload
 		return nil, err
 	}
 
-	return c, nil
+	return subscribe.NewConn(ctx, c), nil
 }

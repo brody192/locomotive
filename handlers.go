@@ -32,8 +32,9 @@ func runLogPipeline[T any](
 		queue.MaxBackoff((30 * time.Second)),
 		queue.BackoffMultiplier(2.0),
 		queue.TTL((5 * time.Minute)),
+		queue.Workers(4),
 		func(ctx context.Context, p webhookPayload) error {
-			return webhook.SendPayload(p.data)
+			return webhook.SendPayload(ctx, p.data)
 		},
 	)
 	if err != nil {
@@ -49,7 +50,7 @@ func runLogPipeline[T any](
 	pipeCtx, pipeCancel := context.WithCancel(ctx)
 	defer pipeCancel()
 
-	track := make(chan []T)
+	track := make(chan []T, 100)
 
 	go func() {
 		for {

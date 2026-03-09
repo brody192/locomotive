@@ -11,11 +11,10 @@ import (
 	"github.com/brody192/locomotive/internal/railway"
 	"github.com/brody192/locomotive/internal/railway/gql/subscriptions"
 	"github.com/brody192/locomotive/internal/railway/subscribe"
-	"github.com/coder/websocket"
 	"github.com/flexstack/uuid"
 )
 
-func createInvalidationRequestSubscription(ctx context.Context, g *railway.GraphQLClient, environmentId uuid.UUID) (*websocket.Conn, error) {
+func createInvalidationRequestSubscription(ctx context.Context, g *railway.GraphQLClient, environmentId uuid.UUID) (*subscribe.Conn, error) {
 	payload := &subscriptions.CanvasInvalidationSubscriptionPayload{
 		Query: subscriptions.CanvasInvalidationSubscription,
 		Variables: &subscriptions.CanvasInvalidationSubscriptionVariables{
@@ -27,8 +26,8 @@ func createInvalidationRequestSubscription(ctx context.Context, g *railway.Graph
 }
 
 // resubscribeWithRetry handles reconnection logic with retries and proper context cancellation
-func resubscribeWithRetry(ctx context.Context, g *railway.GraphQLClient, environmentId uuid.UUID, conn *websocket.Conn) (*websocket.Conn, error) {
-	subscribe.SafeConnCloseNow(conn)
+func resubscribeWithRetry(ctx context.Context, g *railway.GraphQLClient, environmentId uuid.UUID, conn *subscribe.Conn) (*subscribe.Conn, error) {
+	conn.CloseNow()
 
 	// Track total retry time with a maximum of 3600 seconds (1 hour)
 	maxRetryDuration := 3600 * time.Second
@@ -75,7 +74,7 @@ func SubscribeToInvalidationRequests(ctx context.Context, g *railway.GraphQLClie
 	lastHash := ""
 
 	for {
-		_, payload, err := subscribe.SafeConnRead(conn, ctx)
+		_, payload, err := conn.Read(ctx)
 		if err != nil {
 			logger.Stdout.Debug("resubscribing",
 				slog.String("from", "SubscribeToInvalidationRequests_SafeConnRead"),

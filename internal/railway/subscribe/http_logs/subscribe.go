@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"sync"
 	"time"
 
 	"github.com/brody192/locomotive/internal/logger"
@@ -15,11 +14,10 @@ import (
 	"github.com/brody192/locomotive/internal/railway/subscribe"
 	"github.com/brody192/locomotive/internal/railway/subscribe/deployment_changes"
 	"github.com/brody192/locomotive/internal/slice"
-	"github.com/coder/websocket"
 	"github.com/flexstack/uuid"
 )
 
-func createHttpLogSubscription(ctx context.Context, g *railway.GraphQLClient, deploymentId uuid.UUID) (*websocket.Conn, error) {
+func createHttpLogSubscription(ctx context.Context, g *railway.GraphQLClient, deploymentId uuid.UUID) (*subscribe.Conn, error) {
 	payload := &subscriptions.HttpLogsSubscriptionPayload{
 		Query: subscriptions.HttpLogsSubscription,
 		Variables: &subscriptions.HttpLogsSubscriptionVariables{
@@ -34,8 +32,8 @@ func createHttpLogSubscription(ctx context.Context, g *railway.GraphQLClient, de
 }
 
 // resubscribeHttpLogsWithRetry handles reconnection logic with retries and proper context cancellation
-func resubscribeHttpLogsWithRetry(ctx context.Context, g *railway.GraphQLClient, deploymentId uuid.UUID, conn *websocket.Conn) (*websocket.Conn, error) {
-	subscribe.SafeConnCloseNow(conn)
+func resubscribeHttpLogsWithRetry(ctx context.Context, g *railway.GraphQLClient, deploymentId uuid.UUID, conn *subscribe.Conn) (*subscribe.Conn, error) {
+	conn.CloseNow()
 
 	// Track total retry time with a maximum of 1200 seconds (20 minutes)
 	maxRetryDuration := 1200 * time.Second
@@ -98,7 +96,6 @@ func SubscribeToHttpLogs(ctx context.Context, g *railway.GraphQLClient, logTrack
 
 	bufferedLogTrack := make(chan []DeploymentHttpLogWithMetadata)
 	var httpLogBuffer []DeploymentHttpLogWithMetadata
-	var bufferMutex sync.Mutex
 
 	go func() {
 		ticker := time.NewTicker(flushInterval)
@@ -109,17 +106,12 @@ func SubscribeToHttpLogs(ctx context.Context, g *railway.GraphQLClient, logTrack
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				bufferMutex.Lock()
-
 				if len(httpLogBuffer) == 0 {
-					bufferMutex.Unlock()
 					continue
 				}
 
 				toSend := append([]DeploymentHttpLogWithMetadata(nil), httpLogBuffer...)
 				httpLogBuffer = httpLogBuffer[:0]
-
-				bufferMutex.Unlock()
 
 				select {
 				case logTrack <- toSend:
@@ -127,11 +119,7 @@ func SubscribeToHttpLogs(ctx context.Context, g *railway.GraphQLClient, logTrack
 					return
 				}
 			case logs := <-bufferedLogTrack:
-				bufferMutex.Lock()
-
 				httpLogBuffer = append(httpLogBuffer, logs...)
-
-				bufferMutex.Unlock()
 			}
 		}
 	}()
@@ -208,7 +196,7 @@ func getHttpLogs(ctx context.Context, g *railway.GraphQLClient, initialDeploymen
 		return fmt.Errorf("failed to create subscription for deployment %s: %w", initialDeployment.ID, err)
 	}
 
-	defer func() { subscribe.SafeConnCloseNow(conn) }()
+	defer func() { conn.CloseNow() }()
 
 	initTime, ok := ctx.Value(funcInitTimeKey).(time.Time)
 	if !ok {
@@ -242,7 +230,7 @@ func getHttpLogs(ctx context.Context, g *railway.GraphQLClient, initialDeploymen
 				return nil
 			}
 
-			_, logPayload, err := subscribe.SafeConnRead(conn, ctx)
+			_, logPayload, err := conn.Read(ctx)
 			if err != nil {
 				if errors.Is(err, context.DeadlineExceeded) {
 					// No data available, continue
