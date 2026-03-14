@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/brody192/locomotive/internal/logline/reconstructor"
+	"github.com/brody192/locomotive/internal/railway/subscribe"
 	"github.com/brody192/locomotive/internal/railway/subscribe/environment_logs"
 	"github.com/brody192/locomotive/internal/util"
 	"github.com/tidwall/gjson"
@@ -41,9 +42,9 @@ func EnvironmentLogsJsonArray(logs []environment_logs.EnvironmentLogWithMetadata
 		array, _ = sjson.Set(array, fmt.Sprintf("%d.timestamp", i), timestamp)
 
 		array, _ = sjson.Set(array, fmt.Sprintf("%d.ddsource", i), "locomotive")
-		array, _ = sjson.Set(array, fmt.Sprintf("%d.service", i), util.SanitizeString(logs[i].Metadata["service_name"]))
+		array, _ = sjson.Set(array, fmt.Sprintf("%d.service", i), util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyServiceName]))
 
-		hostname := util.SanitizeString(logs[i].Metadata["project_name"] + "-" + util.SanitizeString(logs[i].Metadata["environment_name"]))
+		hostname := util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyProjectName] + "-" + util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyEnvironmentName]))
 		array, _ = sjson.Set(array, fmt.Sprintf("%d.hostname", i), hostname)
 		array, _ = sjson.Set(array, fmt.Sprintf("%d.host", i), hostname)
 	}

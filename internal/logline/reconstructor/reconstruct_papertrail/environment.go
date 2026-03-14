@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/brody192/locomotive/internal/logline/reconstructor"
+	"github.com/brody192/locomotive/internal/railway/subscribe"
 	"github.com/brody192/locomotive/internal/railway/subscribe/environment_logs"
 	"github.com/brody192/locomotive/internal/util"
 	"github.com/tidwall/sjson"
@@ -25,8 +26,8 @@ func EnvironmentLogsJsonLines(logs []environment_logs.EnvironmentLogWithMetadata
 		fmt.Fprintf(&lines, "<%d>%s %s %s: %s ",
 			getSeverityNumberFromSeverity(logs[i].Log.Severity),
 			cmp.Or(reconstructor.TryExtractTimestamp(logs[i]), logs[i].Log.Timestamp).Format(time.StampNano),
-			(util.SanitizeString(logs[i].Metadata["project_name"] + "-" + util.SanitizeString(logs[i].Metadata["environment_name"]))),
-			util.SanitizeString(logs[i].Metadata["service_name"]),
+			(util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyProjectName] + "-" + util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyEnvironmentName]))),
+			util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyServiceName]),
 			logs[i].Log.Message,
 		)
 

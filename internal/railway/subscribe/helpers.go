@@ -14,6 +14,19 @@ import (
 const (
 	pingInterval = 30 * time.Second
 	pingTimeout  = 10 * time.Second
+
+	MetadataKeyLogType             = "log_type"
+	MetadataKeyProjectName         = "project_name"
+	MetadataKeyProjectID           = "project_id"
+	MetadataKeyEnvironmentName     = "environment_name"
+	MetadataKeyEnvironmentID       = "environment_id"
+	MetadataKeyServiceName         = "service_name"
+	MetadataKeyServiceID           = "service_id"
+	MetadataKeyDeploymentID        = "deployment_id"
+	MetadataKeyDeploymentInstanceID = "deployment_instance_id"
+
+	LogTypeEnvironment = "environment"
+	LogTypeHTTP        = "http"
 )
 
 // Conn wraps a websocket.Conn with an automatic ping loop.
@@ -90,4 +103,39 @@ func (c *Conn) Read(ctx context.Context) (mT websocket.MessageType, b []byte, er
 	}()
 
 	return c.Conn.Read(ctx)
+}
+
+// ResubscribeWithRetry closes the old connection and repeatedly calls createFn
+// until it succeeds, the context is cancelled, or maxRetryDuration elapses.
+// Extra slog attributes can be passed for per-call logging context.
+func ResubscribeWithRetry(ctx context.Context, conn *Conn, maxRetryDuration time.Duration, createFn func(ctx context.Context) (*Conn, error), logAttrs ...slog.Attr) (*Conn, error) {
+	conn.CloseNow()
+
+	retryStart := time.Now()
+
+	for {
+		if time.Since(retryStart) > maxRetryDuration {
+			return nil, fmt.Errorf("failed to resubscribe after %v: maximum retry duration exceeded", maxRetryDuration)
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+			newConn, err := createFn(ctx)
+			if err != nil {
+				attrs := append([]slog.Attr{logger.ErrAttr(err)}, logAttrs...)
+				logger.Stdout.LogAttrs(ctx, slog.LevelDebug, "error resubscribing, will retry in 1 second", attrs...)
+
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-time.After(1 * time.Second):
+					continue
+				}
+			}
+
+			return newConn, nil
+		}
+	}
 }

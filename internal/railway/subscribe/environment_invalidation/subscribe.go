@@ -25,42 +25,10 @@ func createInvalidationRequestSubscription(ctx context.Context, g *railway.Graph
 	return g.CreateWebSocketSubscription(ctx, payload)
 }
 
-// resubscribeWithRetry handles reconnection logic with retries and proper context cancellation
 func resubscribeWithRetry(ctx context.Context, g *railway.GraphQLClient, environmentId uuid.UUID, conn *subscribe.Conn) (*subscribe.Conn, error) {
-	conn.CloseNow()
-
-	// Track total retry time with a maximum of 3600 seconds (1 hour)
-	maxRetryDuration := 3600 * time.Second
-	retryStart := time.Now()
-
-	// Try to resubscribe with retry loop
-	for {
-		// Check if we've exceeded the maximum retry duration
-		if time.Since(retryStart) > maxRetryDuration {
-			return nil, fmt.Errorf("failed to resubscribe after %v: maximum retry duration exceeded", maxRetryDuration)
-		}
-
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-			newConn, err := createInvalidationRequestSubscription(ctx, g, environmentId)
-			if err != nil {
-				logger.Stdout.Debug("error resubscribing, will retry in 1 second", logger.ErrAttr(err))
-
-				// Sleep with context cancellation awareness
-				select {
-				case <-ctx.Done():
-					return nil, ctx.Err()
-				case <-time.After(1 * time.Second):
-					continue
-				}
-			}
-
-			// Successfully resubscribed
-			return newConn, nil
-		}
-	}
+	return subscribe.ResubscribeWithRetry(ctx, conn, (3600 * time.Second), func(ctx context.Context) (*subscribe.Conn, error) {
+		return createInvalidationRequestSubscription(ctx, g, environmentId)
+	})
 }
 
 func SubscribeToInvalidationRequests(ctx context.Context, g *railway.GraphQLClient, environmentHashTrack chan<- string, environmentId uuid.UUID) error {

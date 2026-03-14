@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/brody192/locomotive/internal/railway/subscribe"
 	"github.com/brody192/locomotive/internal/railway/subscribe/http_logs"
 	"github.com/brody192/locomotive/internal/util"
 	"github.com/tidwall/sjson"
@@ -23,8 +24,8 @@ func HttpLogsJsonLines(logs []http_logs.DeploymentHttpLogWithMetadata) ([]byte, 
 		fmt.Fprintf(&lines, "<%d>%s %s %s: %s ",
 			getSeverityNumberFromStatusCode(logs[i].StatusCode),
 			logs[i].Timestamp.Format(time.StampNano),
-			(util.SanitizeString(logs[i].Metadata["project_name"] + "-" + util.SanitizeString(logs[i].Metadata["environment_name"]))),
-			util.SanitizeString(logs[i].Metadata["service_name"]),
+			(util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyProjectName] + "-" + util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyEnvironmentName]))),
+			util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyServiceName]),
 			logs[i].Path,
 		)
 

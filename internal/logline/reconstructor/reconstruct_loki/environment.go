@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/brody192/locomotive/internal/logline/reconstructor"
+	"github.com/brody192/locomotive/internal/railway/subscribe"
 	"github.com/brody192/locomotive/internal/railway/subscribe/environment_logs"
 	"github.com/brody192/locomotive/internal/util"
 	"github.com/tidwall/sjson"
@@ -21,7 +22,7 @@ func EnvironmentLogStreams(logs []environment_logs.EnvironmentLogWithMetadata) (
 			streams, _ = sjson.Set(streams, fmt.Sprintf("streams.%d.stream.%s", i, key), value)
 		}
 
-		streams, _ = sjson.Set(streams, fmt.Sprintf("streams.%d.stream.service_namespace", i), logs[i].Metadata["project_name"])
+		streams, _ = sjson.Set(streams, fmt.Sprintf("streams.%d.stream.service_namespace", i), logs[i].Metadata[subscribe.MetadataKeyProjectName])
 
 		timestamp := strconv.FormatInt(cmp.Or(reconstructor.TryExtractTimestamp(logs[i]), logs[i].Log.Timestamp).UnixNano(), 10)
 

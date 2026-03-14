@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strconv"
 
+	"github.com/brody192/locomotive/internal/railway/subscribe"
 	"github.com/brody192/locomotive/internal/railway/subscribe/http_logs"
 	"github.com/tidwall/sjson"
 )
@@ -19,7 +20,7 @@ func HttpLogStreams(logs []http_logs.DeploymentHttpLogWithMetadata) ([]byte, err
 			streams, _ = sjson.Set(streams, fmt.Sprintf("streams.%d.stream.%s", i, key), value)
 		}
 
-		streams, _ = sjson.Set(streams, fmt.Sprintf("streams.%d.stream.service_namespace", i), logs[i].Metadata["project_name"])
+		streams, _ = sjson.Set(streams, fmt.Sprintf("streams.%d.stream.service_namespace", i), logs[i].Metadata[subscribe.MetadataKeyProjectName])
 
 		timestamp := strconv.FormatInt(logs[i].Timestamp.UnixNano(), 10)
 
