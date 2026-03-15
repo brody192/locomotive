@@ -45,7 +45,9 @@ func SubscribeToDeploymentIdChanges(ctx context.Context, g *railway.GraphQLClien
 				return
 			}
 
-			logger.Stderr.Error("error subscribing to invalidation requests", logger.ErrAttr(err))
+			logger.Stderr.Error("error subscribing to invalidation requests",
+				logger.ErrAttr(err),
+			)
 
 			errorChan <- err
 		}

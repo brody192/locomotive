@@ -56,7 +56,6 @@ func SubscribeToServiceLogs(ctx context.Context, g *railway.GraphQLClient, logTr
 		_, logPayload, err := conn.Read(ctx)
 		if err != nil {
 			logger.Stdout.Debug("resubscribing",
-				slog.String("from", "SubscribeToEnvironmentLogs"),
 				logger.ErrAttr(err),
 			)
 
@@ -75,7 +74,9 @@ func SubscribeToServiceLogs(ctx context.Context, g *railway.GraphQLClient, logTr
 		}
 
 		if logs.Type != subscriptions.SubscriptionTypeNext {
-			logger.Stdout.Debug("resubscribing", slog.String("reason", fmt.Sprintf("log type not next: %s", logs.Type)))
+			logger.Stdout.Debug("resubscribing",
+				slog.String("reason", fmt.Sprintf("log type not next: %s", logs.Type)),
+			)
 
 			conn, err = resubscribeServiceLogsWithRetry(ctx, g, environmentId, serviceIds, conn)
 			if err != nil {

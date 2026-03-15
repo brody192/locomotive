@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"time"
 
 	"github.com/brody192/locomotive/internal/logger"
@@ -45,7 +44,6 @@ func SubscribeToInvalidationRequests(ctx context.Context, g *railway.GraphQLClie
 		_, payload, err := conn.Read(ctx)
 		if err != nil {
 			logger.Stdout.Debug("resubscribing",
-				slog.String("from", "SubscribeToInvalidationRequests_SafeConnRead"),
 				logger.ErrAttr(err),
 			)
 
@@ -65,7 +63,6 @@ func SubscribeToInvalidationRequests(ctx context.Context, g *railway.GraphQLClie
 
 		if invalidationRequest.Type != subscriptions.SubscriptionTypeNext {
 			logger.Stdout.Debug("resubscribing",
-				slog.String("from", "SubscribeToInvalidationRequests_TypeNotNext"),
 				logger.ErrAttr(fmt.Errorf("log type not next: %s", invalidationRequest.Type)),
 			)
 

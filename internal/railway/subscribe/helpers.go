@@ -15,18 +15,19 @@ const (
 	pingInterval = 30 * time.Second
 	pingTimeout  = 10 * time.Second
 
-	MetadataKeyLogType             = "log_type"
-	MetadataKeyProjectName         = "project_name"
-	MetadataKeyProjectID           = "project_id"
-	MetadataKeyEnvironmentName     = "environment_name"
-	MetadataKeyEnvironmentID       = "environment_id"
-	MetadataKeyServiceName         = "service_name"
-	MetadataKeyServiceID           = "service_id"
-	MetadataKeyDeploymentID        = "deployment_id"
+	MetadataKeyLogType              = "log_type"
+	MetadataKeyProjectName          = "project_name"
+	MetadataKeyProjectID            = "project_id"
+	MetadataKeyEnvironmentName      = "environment_name"
+	MetadataKeyEnvironmentID        = "environment_id"
+	MetadataKeyServiceName          = "service_name"
+	MetadataKeyServiceID            = "service_id"
+	MetadataKeyDeploymentID         = "deployment_id"
 	MetadataKeyDeploymentInstanceID = "deployment_instance_id"
 
-	LogTypeEnvironment = "environment"
-	LogTypeHTTP        = "http"
+	LogTypeEnvironment             = "environment"
+	LogTypeHTTP                    = "http"
+	LogTypeEnvironmentInvalidation = "environment_invalidation"
 )
 
 // Conn wraps a websocket.Conn with an automatic ping loop.
@@ -83,6 +84,10 @@ func (c *Conn) pingLoop(ctx context.Context) {
 
 // CloseNow stops the ping loop and closes the underlying connection.
 func (c *Conn) CloseNow() (err error) {
+	if c == nil {
+		return nil
+	}
+
 	c.stopPing()
 
 	defer func() {
@@ -113,9 +118,10 @@ func ResubscribeWithRetry(ctx context.Context, conn *Conn, maxRetryDuration time
 
 	retryStart := time.Now()
 
-	for {
-		if time.Since(retryStart) > maxRetryDuration {
-			return nil, fmt.Errorf("failed to resubscribe after %v: maximum retry duration exceeded", maxRetryDuration)
+	for attempt := 1; ; attempt++ {
+		elapsed := time.Since(retryStart)
+		if elapsed > maxRetryDuration {
+			return nil, fmt.Errorf("failed to resubscribe after %v (%d attempts): maximum retry duration exceeded", elapsed.Round(time.Second), attempt-1)
 		}
 
 		select {
@@ -124,7 +130,11 @@ func ResubscribeWithRetry(ctx context.Context, conn *Conn, maxRetryDuration time
 		default:
 			newConn, err := createFn(ctx)
 			if err != nil {
-				attrs := append([]slog.Attr{logger.ErrAttr(err)}, logAttrs...)
+				attrs := append([]slog.Attr{
+					logger.ErrAttr(err),
+					slog.Int("attempt", attempt),
+					slog.Duration("elapsed", elapsed.Round(time.Millisecond)),
+				}, logAttrs...)
 				logger.Stdout.LogAttrs(ctx, slog.LevelDebug, "error resubscribing, will retry in 1 second", attrs...)
 
 				select {
@@ -133,6 +143,13 @@ func ResubscribeWithRetry(ctx context.Context, conn *Conn, maxRetryDuration time
 				case <-time.After(1 * time.Second):
 					continue
 				}
+			}
+
+			if attempt > 1 {
+				logger.Stdout.LogAttrs(ctx, slog.LevelInfo, "successfully resubscribed",
+					slog.Int("attempts", attempt),
+					slog.Duration("elapsed", time.Since(retryStart).Round(time.Millisecond)),
+				)
 			}
 
 			return newConn, nil

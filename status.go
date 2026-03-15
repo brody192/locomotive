@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"runtime"
 	"sync/atomic"
@@ -54,7 +55,7 @@ func reportStatusAsync(deployLogsProcessed *atomic.Int64, httpLogsProcessed *ato
 				slog.Int64("http_logs_processed", hl),
 			)
 
-			if logger.StdoutLvl.Level() == slog.LevelDebug {
+			if logger.Stdout.Enabled(context.Background(), slog.LevelDebug) {
 				memStats := &runtime.MemStats{}
 				runtime.ReadMemStats(memStats)
 
