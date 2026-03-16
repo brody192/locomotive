@@ -39,17 +39,15 @@ func unwrapRetryable(err error) error {
 	return err
 }
 
-// Retry calls fn repeatedly with exponential backoff until it succeeds, returns a
+// RetryConstant calls fn repeatedly with a fixed interval until it succeeds, returns a
 // non-retryable error, the context is cancelled, or maxRetries is exhausted.
 //
 // fn must wrap retryable errors with [Retryable]. Any other non-nil error stops the loop immediately.
-func Retry(
+func RetryConstant(
 	ctx context.Context,
 	name nameParam,
 	maxRetries maxRetriesParam,
-	initialBackoff initialBackoffParam,
-	maxBackoff maxBackoffParam,
-	backoffMultiplier backoffMultiplierParam,
+	interval retryIntervalParam,
 	fn func(ctx context.Context) error,
 ) error {
 	log := logger.Stdout.With(slog.String("retry", name.v))
@@ -77,18 +75,17 @@ func Retry(
 		lastErr = unwrapRetryable(err)
 
 		if attempt < maxRetries.v {
-			backoff := calculateBackoff(attempt, initialBackoff.v, maxBackoff.v, backoffMultiplier.v)
 			log.Warn("failed, retrying",
 				slog.Int("attempt", attempt+1),
 				slog.Int("max_attempts", maxAttempts),
-				slog.Duration("next_backoff", backoff),
+				slog.Duration("next_retry", interval.v),
 				slog.String("err", lastErr.Error()),
 			)
 
 			select {
 			case <-ctx.Done():
 				return fmt.Errorf("context cancelled during retry backoff: %w", context.Cause(ctx))
-			case <-time.After(backoff):
+			case <-time.After(interval.v):
 			}
 			continue
 		}
@@ -101,3 +98,4 @@ func Retry(
 
 	return fmt.Errorf("all %d attempts failed, last error: %w", maxAttempts, lastErr)
 }
+

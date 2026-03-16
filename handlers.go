@@ -72,13 +72,11 @@ func runLogPipeline[T any](
 		}
 	}()
 
-	if err := queue.Retry(
+	if err := queue.RetryConstant(
 		pipeCtx,
 		queue.Name(name+"-subscription"),
 		queue.MaxRetries(10),
-		queue.InitialBackoff((100 * time.Millisecond)),
-		queue.MaxBackoff((5 * time.Second)),
-		queue.BackoffMultiplier(2.0),
+		queue.RetryInterval((1 * time.Second)),
 		func(ctx context.Context) error {
 			if err := subscribe(ctx, track); err != nil {
 				if errors.Is(err, context.Canceled) {

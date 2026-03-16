@@ -7,13 +7,12 @@ import (
 	"log/slog"
 	"slices"
 
-	"github.com/brody192/locomotive/internal/railway/subscribe/environment_invalidation"
-	"github.com/flexstack/uuid"
-
 	"github.com/brody192/locomotive/internal/logger"
 	"github.com/brody192/locomotive/internal/railway"
 	"github.com/brody192/locomotive/internal/railway/gql/queries"
+	"github.com/brody192/locomotive/internal/railway/subscribe/environment_invalidation"
 	"github.com/brody192/locomotive/internal/slice"
+	"github.com/flexstack/uuid"
 )
 
 func SubscribeToDeploymentIdChanges(ctx context.Context, g *railway.GraphQLClient, deploymentIdSlice *slice.Sync[DeploymentIdWithInfo], changeDetected chan<- struct{}, environmentId uuid.UUID, serviceIds []uuid.UUID) error {
@@ -23,8 +22,8 @@ func SubscribeToDeploymentIdChanges(ctx context.Context, g *railway.GraphQLClien
 		"id": environmentId,
 	}
 
-	if err := g.Client.Exec(ctx, queries.EnvironmentQuery, &environment, variables); err != nil {
-		return err
+	if err := fetchEnvironmentWithRetry(ctx, g, environment, variables); err != nil {
+		return fmt.Errorf("error getting environment data: %w", err)
 	}
 
 	deploymentIdSlice.AppendMany(findSuccessfulDeploymentsIdsForWantedServiceIds(environment, serviceIds))
@@ -64,7 +63,7 @@ func SubscribeToDeploymentIdChanges(ctx context.Context, g *railway.GraphQLClien
 
 			environment := &queries.EnvironmentData{}
 
-			if err := g.Client.Exec(ctx, queries.EnvironmentQuery, &environment, variables); err != nil {
+			if err := fetchEnvironmentWithRetry(ctx, g, environment, variables); err != nil {
 				return fmt.Errorf("error getting environment data for new environment hash: %w", err)
 			}
 

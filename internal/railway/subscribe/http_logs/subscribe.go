@@ -32,7 +32,7 @@ func createHttpLogSubscription(ctx context.Context, g *railway.GraphQLClient, de
 }
 
 func resubscribeHttpLogsWithRetry(ctx context.Context, g *railway.GraphQLClient, deploymentId uuid.UUID, conn *subscribe.Conn) (*subscribe.Conn, error) {
-	return subscribe.ResubscribeWithRetry(ctx, conn, (1200 * time.Second), func(ctx context.Context) (*subscribe.Conn, error) {
+	return subscribe.ResubscribeWithRetry(ctx, conn, (3600 * time.Second), func(ctx context.Context) (*subscribe.Conn, error) {
 		return createHttpLogSubscription(ctx, g, deploymentId)
 	}, slog.String("deployment_id", deploymentId.String()))
 }

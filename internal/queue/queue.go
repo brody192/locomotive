@@ -19,6 +19,7 @@ type (
 	nameParam              struct{ v string }
 	maxQueueSizeParam      struct{ v int }
 	maxRetriesParam        struct{ v int }
+	retryIntervalParam     struct{ v time.Duration }
 	initialBackoffParam    struct{ v time.Duration }
 	maxBackoffParam        struct{ v time.Duration }
 	backoffMultiplierParam struct{ v float64 }
@@ -26,14 +27,15 @@ type (
 	workersParam           struct{ v int }
 )
 
-func Name(name string) nameParam                               { return nameParam{name} }
-func MaxQueueSize(size int) maxQueueSizeParam                   { return maxQueueSizeParam{size} }
-func MaxRetries(retries int) maxRetriesParam                    { return maxRetriesParam{retries} }
-func InitialBackoff(d time.Duration) initialBackoffParam        { return initialBackoffParam{d} }
-func MaxBackoff(d time.Duration) maxBackoffParam                { return maxBackoffParam{d} }
+func Name(name string) nameParam                                 { return nameParam{name} }
+func MaxQueueSize(size int) maxQueueSizeParam                    { return maxQueueSizeParam{size} }
+func MaxRetries(retries int) maxRetriesParam                     { return maxRetriesParam{retries} }
+func RetryInterval(d time.Duration) retryIntervalParam           { return retryIntervalParam{d} }
+func InitialBackoff(d time.Duration) initialBackoffParam         { return initialBackoffParam{d} }
+func MaxBackoff(d time.Duration) maxBackoffParam                 { return maxBackoffParam{d} }
 func BackoffMultiplier(multiplier float64) backoffMultiplierParam { return backoffMultiplierParam{multiplier} }
-func TTL(d time.Duration) ttlParam                              { return ttlParam{d} }
-func Workers(n int) workersParam                                { return workersParam{n} }
+func TTL(d time.Duration) ttlParam                               { return ttlParam{d} }
+func Workers(n int) workersParam                                 { return workersParam{n} }
 
 type config struct {
 	name              string
