@@ -75,8 +75,8 @@ func SubscribeToHttpLogs(ctx context.Context, g *railway.GraphQLClient, logTrack
 					continue
 				}
 
-				toSend := append([]DeploymentHttpLogWithMetadata(nil), httpLogBuffer...)
-				httpLogBuffer = httpLogBuffer[:0]
+				toSend := httpLogBuffer
+				httpLogBuffer = nil
 
 				select {
 				case logTrack <- toSend:
@@ -97,6 +97,7 @@ func SubscribeToHttpLogs(ctx context.Context, g *railway.GraphQLClient, logTrack
 
 		go func() {
 			defer activeDeploymentIds.Delete(deployment.ID)
+			defer metadataDeploymentCache.Delete(deployment.ID)
 
 			if err := getHttpLogs(ctx, g, deployment, bufferedLogTrack, deploymentIdSlice); err != nil {
 				select {
@@ -247,7 +248,7 @@ func getHttpLogs(ctx context.Context, g *railway.GraphQLClient, initialDeploymen
 				continue
 			}
 
-			filteredHttpLogs := []DeploymentHttpLogWithMetadata{}
+			filteredHttpLogs := make([]DeploymentHttpLogWithMetadata, 0, len(logs.Payload.Data.HTTPLogs))
 
 			for i := range logs.Payload.Data.HTTPLogs {
 				logTimestamp, err := getTimeStampAttributeFromHttpLog(logs.Payload.Data.HTTPLogs[i])

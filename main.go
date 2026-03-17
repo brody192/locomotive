@@ -63,10 +63,10 @@ func run() int {
 	deployLogsProcessed := atomic.Int64{}
 	httpLogsProcessed := atomic.Int64{}
 
-	reportStatusAsync(&deployLogsProcessed, &httpLogsProcessed)
-
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	reportStatusAsync(ctx, &deployLogsProcessed, &httpLogsProcessed)
 
 	errGroup, _ := errgroup.NewErrGroup(ctx)
 	defer errGroup.Cancel()

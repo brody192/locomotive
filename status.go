@@ -12,14 +12,21 @@ import (
 	"github.com/brody192/locomotive/internal/util"
 )
 
-func reportStatusAsync(deployLogsProcessed *atomic.Int64, httpLogsProcessed *atomic.Int64) {
+func reportStatusAsync(ctx context.Context, deployLogsProcessed *atomic.Int64, httpLogsProcessed *atomic.Int64) {
 	var prevDeployLogs, prevHttpLogs atomic.Int64
 
 	go func() {
 		// Phase 1: poll at high frequency until the first logs arrive
 		t := time.NewTicker(500 * time.Millisecond)
 
-		for range t.C {
+		for {
+			select {
+			case <-ctx.Done():
+				t.Stop()
+				return
+			case <-t.C:
+			}
+
 			dl := deployLogsProcessed.Load()
 			hl := httpLogsProcessed.Load()
 
@@ -42,7 +49,13 @@ func reportStatusAsync(deployLogsProcessed *atomic.Int64, httpLogsProcessed *ato
 		t = time.NewTicker(config.Global.ReportStatusEvery)
 		defer t.Stop()
 
-		for range t.C {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+			}
+
 			dl := deployLogsProcessed.Load()
 			hl := httpLogsProcessed.Load()
 

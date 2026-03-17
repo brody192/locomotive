@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"time"
 
 	cache "github.com/Code-Hex/go-generics-cache"
@@ -20,7 +21,7 @@ var metadataDeploymentCache = cache.New[uuid.UUID, DeploymentHttpLogMetadata]()
 
 func getMetadataForDeployment(ctx context.Context, g *railway.GraphQLClient, deploymentId uuid.UUID) (DeploymentHttpLogMetadata, error) {
 	if cached, ok := metadataDeploymentCache.Get(deploymentId); ok {
-		return cached, nil
+		return maps.Clone(cached), nil
 	}
 
 	if g.Client == nil {

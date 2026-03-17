@@ -86,7 +86,7 @@ func SubscribeToServiceLogs(ctx context.Context, g *railway.GraphQLClient, logTr
 			continue
 		}
 
-		filteredLogs := []EnvironmentLogWithMetadata{}
+		filteredLogs := make([]EnvironmentLogWithMetadata, 0, len(logs.Payload.Data.EnvironmentLogs))
 
 		for i := range logs.Payload.Data.EnvironmentLogs {
 			// skip logs with empty messages and no attributes
