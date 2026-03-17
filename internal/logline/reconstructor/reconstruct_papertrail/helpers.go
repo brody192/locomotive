@@ -1,6 +1,10 @@
 package reconstruct_papertrail
 
-import "strings"
+import (
+	"bytes"
+	"fmt"
+	"strings"
+)
 
 const rfc5424time = "2006-01-02T15:04:05.999999Z07:00"
 
@@ -37,4 +41,24 @@ func getSeverityNumberFromStatusCode(statusCode int64) int {
 	}
 
 	return 14 // info (facility 1 + severity 6)
+}
+
+func formatSyslogLine(priority int, timestamp, hostname, service, message string, body []byte) []byte {
+	line := fmt.Appendf(nil, "<%d>1 %s %s %s - - - %s", priority, timestamp, hostname, service, message)
+	line = append(line, ' ')
+	return append(line, body...)
+}
+
+func joinSyslogLines(lines [][]byte) []byte {
+	var buf bytes.Buffer
+
+	for i, line := range lines {
+		if i > 0 {
+			buf.WriteByte('\n')
+		}
+
+		buf.Write(line)
+	}
+
+	return buf.Bytes()
 }

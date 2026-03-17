@@ -1,7 +1,6 @@
 package reconstruct_papertrail
 
 import (
-	"bytes"
 	"fmt"
 	"time"
 
@@ -12,8 +11,8 @@ import (
 )
 
 // reconstruct multiple http logs into json lines with a custom timestamp attribute
-func HttpLogsJsonLines(logs []http_logs.DeploymentHttpLogWithMetadata) ([]byte, error) {
-	lines := bytes.Buffer{}
+func HttpLogsSyslog(logs []http_logs.DeploymentHttpLogWithMetadata) ([]byte, error) {
+	lines := make([][]byte, 0, len(logs))
 
 	for i := range logs {
 		jsonLine, err := httpLogLineJson(logs[i])
@@ -21,23 +20,25 @@ func HttpLogsJsonLines(logs []http_logs.DeploymentHttpLogWithMetadata) ([]byte, 
 			return nil, err
 		}
 
-		fmt.Fprintf(&lines, "<%d>1 %s %s %s - - - %s",
+		line := formatSyslogLine(
+			// Severity
 			getSeverityNumberFromStatusCode(logs[i].StatusCode),
+			// Timestamp
 			logs[i].Timestamp.Format(rfc5424time),
+			// Hostname
 			util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyProjectName]+"-"+util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyEnvironmentName])),
+			// Service
 			util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyServiceName]),
+			// Message
 			logs[i].Path,
+			// Body (JSON object)
+			jsonLine,
 		)
 
-		lines.WriteByte(' ')
-		lines.Write(jsonLine)
-
-		if i < (len(logs) - 1) {
-			lines.WriteByte('\n')
-		}
+		lines = append(lines, line)
 	}
 
-	return lines.Bytes(), nil
+	return joinSyslogLines(lines), nil
 }
 
 // reconstruct a single http log into a raw json object

@@ -1,7 +1,6 @@
 package reconstruct_papertrail
 
 import (
-	"bytes"
 	"cmp"
 	"fmt"
 	"time"
@@ -14,8 +13,8 @@ import (
 )
 
 // reconstruct multiple deployment logs into json lines with a custom timestamp attribute
-func EnvironmentLogsJsonLines(logs []environment_logs.EnvironmentLogWithMetadata) ([]byte, error) {
-	lines := bytes.Buffer{}
+func EnvironmentLogsSyslog(logs []environment_logs.EnvironmentLogWithMetadata) ([]byte, error) {
+	lines := make([][]byte, 0, len(logs))
 
 	for i := range logs {
 		logObject, err := environmentLogJson(logs[i])
@@ -23,23 +22,25 @@ func EnvironmentLogsJsonLines(logs []environment_logs.EnvironmentLogWithMetadata
 			return nil, err
 		}
 
-		fmt.Fprintf(&lines, "<%d>1 %s %s %s - - - %s",
+		line := formatSyslogLine(
+			// Severity
 			getSeverityNumberFromSeverity(logs[i].Log.Severity),
+			// Timestamp
 			cmp.Or(reconstructor.TryExtractTimestamp(logs[i]), logs[i].Log.Timestamp).Format(rfc5424time),
+			// Hostname
 			util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyProjectName]+"-"+util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyEnvironmentName])),
+			// Service
 			util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyServiceName]),
+			// Message
 			logs[i].Log.Message,
+			// Body (JSON object)
+			logObject,
 		)
 
-		lines.WriteByte(' ')
-		lines.Write(logObject)
-
-		if i < (len(logs) - 1) {
-			lines.WriteByte('\n')
-		}
+		lines = append(lines, line)
 	}
 
-	return lines.Bytes(), nil
+	return joinSyslogLines(lines), nil
 }
 
 // reconstruct a single deployment log into a raw json object
