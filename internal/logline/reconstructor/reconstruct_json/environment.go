@@ -1,11 +1,9 @@
 package reconstruct_json
 
 import (
-	"bytes"
 	"cmp"
 	"fmt"
 	"slices"
-	"strconv"
 	"time"
 
 	"github.com/brody192/locomotive/internal/logline/reconstructor"
@@ -21,7 +19,7 @@ func EnvironmentLogsJsonArray(logs []environment_logs.EnvironmentLogWithMetadata
 
 // reconstruct multiple deployment logs into a raw json array with a custom timestamp attribute
 func EnvironmentLogsJsonArrayWithConfig(logs []environment_logs.EnvironmentLogWithMetadata, config Config) ([]byte, error) {
-	array := `[]`
+	objects := make([][]byte, 0, len(logs))
 
 	for i := range logs {
 		logObject, err := environmentLogJson(logs[i], config)
@@ -29,10 +27,10 @@ func EnvironmentLogsJsonArrayWithConfig(logs []environment_logs.EnvironmentLogWi
 			return nil, err
 		}
 
-		array, _ = sjson.SetRaw(array, strconv.Itoa(i), string(logObject))
+		objects = append(objects, logObject)
 	}
 
-	return []byte(array), nil
+	return reconstructor.RawJSONArray(objects), nil
 }
 
 // reconstruct multiple deployment logs into json lines
@@ -42,7 +40,7 @@ func EnvironmentLogsJsonLines(logs []environment_logs.EnvironmentLogWithMetadata
 
 // reconstruct multiple deployment logs into json lines with a custom timestamp attribute
 func EnvironmentLogsJsonLinesWithConfig(logs []environment_logs.EnvironmentLogWithMetadata, config Config) ([]byte, error) {
-	lines := bytes.Buffer{}
+	objects := make([][]byte, 0, len(logs))
 
 	for i := range logs {
 		logObject, err := environmentLogJson(logs[i], config)
@@ -50,27 +48,23 @@ func EnvironmentLogsJsonLinesWithConfig(logs []environment_logs.EnvironmentLogWi
 			return nil, err
 		}
 
-		lines.Write(logObject)
-
-		if i < (len(logs) - 1) {
-			lines.WriteByte('\n')
-		}
+		objects = append(objects, logObject)
 	}
 
-	return lines.Bytes(), nil
+	return reconstructor.RawJSONLines(objects), nil
 }
 
 // reconstruct a single deployment log into a raw json object
 func environmentLogJson(log environment_logs.EnvironmentLogWithMetadata, config Config) ([]byte, error) {
-	object := `{}`
+	object := []byte(reconstructor.EmptyJSONObject)
 
 	for key, value := range log.Metadata {
-		object, _ = sjson.Set(object, fmt.Sprintf("_metadata.%s", key), value)
+		object, _ = sjson.SetBytes(object, fmt.Sprintf("_metadata.%s", key), value)
 	}
 
-	object, _ = sjson.Set(object, "message", util.StripAnsi(log.Log.Message))
+	object, _ = sjson.SetBytes(object, "message", util.StripAnsi(log.Log.Message))
 
-	object, _ = sjson.Set(object, "severity", log.Log.Severity)
+	object, _ = sjson.SetBytes(object, "severity", log.Log.Severity)
 
 	for i := range log.Log.Attributes {
 		key := log.Log.Attributes[i].Key
@@ -80,12 +74,12 @@ func environmentLogJson(log environment_logs.EnvironmentLogWithMetadata, config 
 			key = fmt.Sprintf("_%s", key)
 		}
 
-		object, _ = sjson.SetRaw(object, key, log.Log.Attributes[i].Value)
+		object, _ = sjson.SetRawBytes(object, key, []byte(log.Log.Attributes[i].Value))
 	}
 
 	if config.TimestampAttribute != "" {
-		object, _ = sjson.Set(object, config.TimestampAttribute, cmp.Or(reconstructor.TryExtractTimestamp(log), log.Log.Timestamp).Format(time.RFC3339Nano))
+		object, _ = sjson.SetBytes(object, config.TimestampAttribute, cmp.Or(reconstructor.TryExtractTimestamp(log), log.Log.Timestamp).Format(time.RFC3339Nano))
 	}
 
-	return []byte(object), nil
+	return object, nil
 }

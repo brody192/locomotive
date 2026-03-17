@@ -23,14 +23,15 @@ func EnvironmentLogsJsonLines(logs []environment_logs.EnvironmentLogWithMetadata
 			return nil, err
 		}
 
-		fmt.Fprintf(&lines, "<%d>%s %s %s: %s ",
+		fmt.Fprintf(&lines, "<%d>1 %s %s %s - - - %s",
 			getSeverityNumberFromSeverity(logs[i].Log.Severity),
-			cmp.Or(reconstructor.TryExtractTimestamp(logs[i]), logs[i].Log.Timestamp).Format(time.StampNano),
-			(util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyProjectName] + "-" + util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyEnvironmentName]))),
+			cmp.Or(reconstructor.TryExtractTimestamp(logs[i]), logs[i].Log.Timestamp).Format(rfc5424time),
+			util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyProjectName]+"-"+util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyEnvironmentName])),
 			util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyServiceName]),
 			logs[i].Log.Message,
 		)
 
+		lines.WriteByte(' ')
 		lines.Write(logObject)
 
 		if i < (len(logs) - 1) {
@@ -43,19 +44,19 @@ func EnvironmentLogsJsonLines(logs []environment_logs.EnvironmentLogWithMetadata
 
 // reconstruct a single deployment log into a raw json object
 func environmentLogJson(log environment_logs.EnvironmentLogWithMetadata) ([]byte, error) {
-	object := `{}`
+	object := []byte(reconstructor.EmptyJSONObject)
 
 	for key, value := range log.Metadata {
-		object, _ = sjson.Set(object, fmt.Sprintf("_metadata.%s", key), value)
+		object, _ = sjson.SetBytes(object, fmt.Sprintf("_metadata.%s", key), value)
 	}
 
-	object, _ = sjson.Set(object, "severity", log.Log.Severity)
+	object, _ = sjson.SetBytes(object, "severity", log.Log.Severity)
 
 	for i := range log.Log.Attributes {
-		object, _ = sjson.SetRaw(object, log.Log.Attributes[i].Key, log.Log.Attributes[i].Value)
+		object, _ = sjson.SetRawBytes(object, log.Log.Attributes[i].Key, []byte(log.Log.Attributes[i].Value))
 	}
 
-	object, _ = sjson.Set(object, "timestamp", cmp.Or(reconstructor.TryExtractTimestamp(log), log.Log.Timestamp).Format(time.RFC3339Nano))
+	object, _ = sjson.SetBytes(object, "timestamp", cmp.Or(reconstructor.TryExtractTimestamp(log), log.Log.Timestamp).Format(time.RFC3339Nano))
 
-	return []byte(object), nil
+	return object, nil
 }

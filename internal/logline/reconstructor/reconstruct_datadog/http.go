@@ -2,9 +2,9 @@ package reconstruct_datadog
 
 import (
 	"fmt"
-	"strconv"
 	"time"
 
+	"github.com/brody192/locomotive/internal/logline/reconstructor"
 	"github.com/brody192/locomotive/internal/railway/subscribe"
 	"github.com/brody192/locomotive/internal/railway/subscribe/http_logs"
 	"github.com/brody192/locomotive/internal/util"
@@ -14,35 +14,37 @@ import (
 
 // reconstruct multiple http logs into a raw json array
 func HttpLogsJsonArray(logs []http_logs.DeploymentHttpLogWithMetadata) ([]byte, error) {
-	array := `[]`
+	objects := make([][]byte, 0, len(logs))
 
 	for i := range logs {
-		array, _ = sjson.SetRaw(array, strconv.Itoa(i), string(logs[i].Log))
+		object := logs[i].Log
 
 		for key, value := range logs[i].Metadata {
-			array, _ = sjson.Set(array, fmt.Sprintf("%d._metadata.%s", i, key), value)
+			object, _ = sjson.SetBytes(object, fmt.Sprintf("_metadata.%s", key), value)
 		}
 
-		array, _ = sjson.Set(array, fmt.Sprintf("%d.message", i), logs[i].Path)
+		object, _ = sjson.SetBytes(object, "message", logs[i].Path)
 
 		for _, attribute := range reservedAttributes {
-			attr := gjson.Get(array, fmt.Sprintf("%d.%s", i, attribute))
+			attr := gjson.GetBytes(object, attribute)
 
 			if attr.Exists() {
-				array, _ = sjson.Delete(array, fmt.Sprintf("%d.%s", i, attribute))
-				array, _ = sjson.Set(array, fmt.Sprintf("%d._%s", i, attribute), attr.Value())
+				object, _ = sjson.DeleteBytes(object, attribute)
+				object, _ = sjson.SetBytes(object, fmt.Sprintf("_%s", attribute), attr.Value())
 			}
 		}
 
-		array, _ = sjson.Set(array, fmt.Sprintf("%d.timestamp", i), logs[i].Timestamp.Format(time.RFC3339Nano))
+		object, _ = sjson.SetBytes(object, "timestamp", logs[i].Timestamp.Format(time.RFC3339Nano))
 
-		array, _ = sjson.Set(array, fmt.Sprintf("%d.ddsource", i), "locomotive")
-		array, _ = sjson.Set(array, fmt.Sprintf("%d.service", i), util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyServiceName]))
+		object, _ = sjson.SetBytes(object, "ddsource", "locomotive")
+		object, _ = sjson.SetBytes(object, "service", util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyServiceName]))
 
 		hostname := util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyProjectName] + "-" + util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyEnvironmentName]))
-		array, _ = sjson.Set(array, fmt.Sprintf("%d.hostname", i), hostname)
-		array, _ = sjson.Set(array, fmt.Sprintf("%d.host", i), hostname)
+		object, _ = sjson.SetBytes(object, "hostname", hostname)
+		object, _ = sjson.SetBytes(object, "host", hostname)
+
+		objects = append(objects, object)
 	}
 
-	return []byte(array), nil
+	return reconstructor.RawJSONArray(objects), nil
 }

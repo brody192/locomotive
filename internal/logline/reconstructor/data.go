@@ -1,5 +1,7 @@
 package reconstructor
 
+const EmptyJSONObject = `{}`
+
 var commonTimeStampAttributes = []string{
 	"timestamp",
 	"time",

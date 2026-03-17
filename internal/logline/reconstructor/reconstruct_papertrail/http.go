@@ -21,14 +21,15 @@ func HttpLogsJsonLines(logs []http_logs.DeploymentHttpLogWithMetadata) ([]byte, 
 			return nil, err
 		}
 
-		fmt.Fprintf(&lines, "<%d>%s %s %s: %s ",
+		fmt.Fprintf(&lines, "<%d>1 %s %s %s - - - %s",
 			getSeverityNumberFromStatusCode(logs[i].StatusCode),
-			logs[i].Timestamp.Format(time.StampNano),
-			(util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyProjectName] + "-" + util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyEnvironmentName]))),
+			logs[i].Timestamp.Format(rfc5424time),
+			util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyProjectName]+"-"+util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyEnvironmentName])),
 			util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyServiceName]),
 			logs[i].Path,
 		)
 
+		lines.WriteByte(' ')
 		lines.Write(jsonLine)
 
 		if i < (len(logs) - 1) {
@@ -41,15 +42,15 @@ func HttpLogsJsonLines(logs []http_logs.DeploymentHttpLogWithMetadata) ([]byte, 
 
 // reconstruct a single http log into a raw json object
 func httpLogLineJson(log http_logs.DeploymentHttpLogWithMetadata) ([]byte, error) {
-	object := string(log.Log)
+	object := log.Log
 
 	for key, value := range log.Metadata {
-		object, _ = sjson.Set(object, fmt.Sprintf("_metadata.%s", key), value)
+		object, _ = sjson.SetBytes(object, fmt.Sprintf("_metadata.%s", key), value)
 	}
 
-	object, _ = sjson.Delete(object, "path")
+	object, _ = sjson.DeleteBytes(object, "path")
 
-	object, _ = sjson.Set(object, "timestamp", log.Timestamp.Format(time.RFC3339Nano))
+	object, _ = sjson.SetBytes(object, "timestamp", log.Timestamp.Format(time.RFC3339Nano))
 
-	return []byte(object), nil
+	return object, nil
 }

@@ -2,6 +2,8 @@ package reconstruct_papertrail
 
 import "strings"
 
+const rfc5424time = "2006-01-02T15:04:05.999999Z07:00"
+
 func getSeverityNumberFromSeverity(severity string) int {
 	severity = strings.ToLower(severity)
 

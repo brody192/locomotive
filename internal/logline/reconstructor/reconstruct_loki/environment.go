@@ -15,26 +15,26 @@ import (
 // https://grafana.com/docs/loki/latest/reference/loki-http-api/#ingest-logs
 
 func EnvironmentLogStreams(logs []environment_logs.EnvironmentLogWithMetadata) ([]byte, error) {
-	streams := lokiJSON
+	streams := []byte(lokiJSON)
 
 	for i := range logs {
 		for key, value := range logs[i].Metadata {
-			streams, _ = sjson.Set(streams, fmt.Sprintf("streams.%d.stream.%s", i, key), value)
+			streams, _ = sjson.SetBytes(streams, fmt.Sprintf("streams.%d.stream.%s", i, key), value)
 		}
 
-		streams, _ = sjson.Set(streams, fmt.Sprintf("streams.%d.stream.service_namespace", i), logs[i].Metadata[subscribe.MetadataKeyProjectName])
+		streams, _ = sjson.SetBytes(streams, fmt.Sprintf("streams.%d.stream.service_namespace", i), logs[i].Metadata[subscribe.MetadataKeyProjectName])
 
 		timestamp := strconv.FormatInt(cmp.Or(reconstructor.TryExtractTimestamp(logs[i]), logs[i].Log.Timestamp).UnixNano(), 10)
 
-		streams, _ = sjson.Set(streams, fmt.Sprintf("streams.%d.values.0.0", i), timestamp)
-		streams, _ = sjson.Set(streams, fmt.Sprintf("streams.%d.values.0.1", i), util.StripAnsi(logs[i].Log.Message))
+		streams, _ = sjson.SetBytes(streams, fmt.Sprintf("streams.%d.values.0.0", i), timestamp)
+		streams, _ = sjson.SetBytes(streams, fmt.Sprintf("streams.%d.values.0.1", i), util.StripAnsi(logs[i].Log.Message))
 
 		for j := range logs[i].Log.Attributes {
 			for key, value := range jsonToAttributes(logs[i].Log.Attributes[j].Key, logs[i].Log.Attributes[j].Value) {
-				streams, _ = sjson.Set(streams, fmt.Sprintf("streams.%d.values.0.2.%s", i, key), value)
+				streams, _ = sjson.SetBytes(streams, fmt.Sprintf("streams.%d.values.0.2.%s", i, key), value)
 			}
 		}
 	}
 
-	return []byte(streams), nil
+	return streams, nil
 }
