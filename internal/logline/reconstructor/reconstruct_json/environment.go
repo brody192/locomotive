@@ -81,5 +81,11 @@ func environmentLogJson(log environment_logs.EnvironmentLogWithMetadata, config 
 		object, _ = sjson.SetBytes(object, config.TimestampAttribute, cmp.Or(reconstructor.TryExtractTimestamp(log), log.Log.Timestamp).Format(time.RFC3339Nano))
 	}
 
+	if config.AdditionalFieldsFunc != nil {
+		for key, value := range config.AdditionalFieldsFunc(log.Metadata) {
+			object, _ = sjson.SetBytes(object, key, value)
+		}
+	}
+
 	return object, nil
 }

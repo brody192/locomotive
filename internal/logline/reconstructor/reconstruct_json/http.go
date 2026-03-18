@@ -75,5 +75,11 @@ func httpLogLineJson(log http_logs.DeploymentHttpLogWithMetadata, config Config)
 		object, _ = sjson.SetBytes(object, config.TimestampAttribute, log.Timestamp.Format(time.RFC3339Nano))
 	}
 
+	if config.AdditionalFieldsFunc != nil {
+		for key, value := range config.AdditionalFieldsFunc(log.Metadata) {
+			object, _ = sjson.SetBytes(object, key, value)
+		}
+	}
+
 	return object, nil
 }

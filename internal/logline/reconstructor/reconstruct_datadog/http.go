@@ -1,50 +1,14 @@
 package reconstruct_datadog
 
 import (
-	"fmt"
-	"time"
-
-	"github.com/brody192/locomotive/internal/logline/reconstructor"
-	"github.com/brody192/locomotive/internal/railway/subscribe"
+	"github.com/brody192/locomotive/internal/logline/reconstructor/reconstruct_json"
 	"github.com/brody192/locomotive/internal/railway/subscribe/http_logs"
-	"github.com/brody192/locomotive/internal/util"
-	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 )
 
-// reconstruct multiple http logs into a raw json array
 func HttpLogsJsonArray(logs []http_logs.DeploymentHttpLogWithMetadata) ([]byte, error) {
-	objects := make([][]byte, 0, len(logs))
-
-	for i := range logs {
-		object := logs[i].Log
-
-		for key, value := range logs[i].Metadata {
-			object, _ = sjson.SetBytes(object, fmt.Sprintf("_metadata.%s", key), value)
-		}
-
-		object, _ = sjson.SetBytes(object, "message", logs[i].Path)
-
-		for _, attribute := range reservedAttributes {
-			attr := gjson.GetBytes(object, attribute)
-
-			if attr.Exists() {
-				object, _ = sjson.DeleteBytes(object, attribute)
-				object, _ = sjson.SetBytes(object, fmt.Sprintf("_%s", attribute), attr.Value())
-			}
-		}
-
-		object, _ = sjson.SetBytes(object, "timestamp", logs[i].Timestamp.Format(time.RFC3339Nano))
-
-		object, _ = sjson.SetBytes(object, "ddsource", "locomotive")
-		object, _ = sjson.SetBytes(object, "service", util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyServiceName]))
-
-		hostname := util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyProjectName] + "-" + util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyEnvironmentName]))
-		object, _ = sjson.SetBytes(object, "hostname", hostname)
-		object, _ = sjson.SetBytes(object, "host", hostname)
-
-		objects = append(objects, object)
-	}
-
-	return reconstructor.RawJSONArray(objects), nil
+	return reconstruct_json.HttpLogsJsonArrayWithConfig(logs, reconstruct_json.Config{
+		TimestampAttribute:   timestampAttribute,
+		ReserverdAttributes:  reservedAttributes,
+		AdditionalFieldsFunc: additionalFields,
+	})
 }
