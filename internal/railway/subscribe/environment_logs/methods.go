@@ -3,6 +3,7 @@ package environment_logs
 import (
 	"context"
 	"errors"
+	"slices"
 	"time"
 
 	cache "github.com/Code-Hex/go-generics-cache"
@@ -64,11 +65,9 @@ func getMetadataMapForEnvironment(ctx context.Context, g *graphql.Client, enviro
 
 // searches for the given key and returns the corresponding value (and true) if found, or an empty string (and false)
 func AttributesHasKeys(attributes []subscriptions.EnvironmentLogAttributes, keys []string) (string, bool) {
-	for i := range attributes {
-		for j := range keys {
-			if keys[j] == attributes[i].Key {
-				return attributes[i].Value, true
-			}
+	for _, attr := range attributes {
+		if slices.Contains(keys, attr.Key) {
+			return attr.Value, true
 		}
 	}
 

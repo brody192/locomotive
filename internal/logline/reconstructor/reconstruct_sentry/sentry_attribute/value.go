@@ -111,8 +111,8 @@ const baseValueJSON = `{"value":"","type":""}`
 
 type unknownValueType struct{}
 
-// AsInterface returns Value's data as interface{}.
-func (v Value) AsInterface() interface{} {
+// AsInterface returns Value's data as any.
+func (v Value) AsInterface() any {
 	switch v.Type() {
 	case BOOL:
 		return v.AsBool()

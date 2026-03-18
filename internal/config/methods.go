@@ -21,9 +21,7 @@ func (h *AdditionalHeaders) UnmarshalText(envByte []byte) error {
 
 	headers := make(map[string]string)
 
-	headerPairs := strings.Split(envStringTrimmed, ";")
-
-	for _, header := range headerPairs {
+	for header := range strings.SplitSeq(envStringTrimmed, ";") {
 		keyValue := strings.SplitN(header, "=", 2)
 
 		if len(keyValue) != 2 {

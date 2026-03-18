@@ -22,11 +22,7 @@ func NewErrGroup(ctx context.Context) (*ErrGroup, context.Context) {
 }
 
 func (g *ErrGroup) Go(f func(ctx context.Context) error) {
-	g.wg.Add(1)
-
-	go func() {
-		defer g.wg.Done()
-
+	g.wg.Go(func() {
 		if err := f(g.ctx); err != nil {
 			g.cancel()
 			select {
@@ -34,7 +30,7 @@ func (g *ErrGroup) Go(f func(ctx context.Context) error) {
 			default:
 			}
 		}
-	}()
+	})
 }
 
 func (g *ErrGroup) Cancel() {
