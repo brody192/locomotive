@@ -26,7 +26,7 @@ func HttpLogsSyslog(logs []http_logs.DeploymentHttpLogWithMetadata) ([]byte, err
 			// Timestamp
 			logs[i].Timestamp.Format(rfc5424time),
 			// Hostname
-			util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyProjectName]+"-"+util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyEnvironmentName])),
+			util.SanitizeString((logs[i].Metadata[subscribe.MetadataKeyProjectName] + "-" + util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyEnvironmentName]))),
 			// Service
 			util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyServiceName]),
 			// Message

@@ -41,7 +41,7 @@ func HttpLogsEnvelope(logs []http_logs.DeploymentHttpLogWithMetadata) ([]byte, e
 		item = applyJSONBytesAttributes(item, logs[i].Log)
 
 		for key, value := range logs[i].Metadata {
-			item, _ = sjson.SetRawBytes(item, "attributes._metadata__"+key, sentry_attribute.StringValue(value).RawJSON())
+			item, _ = sjson.SetRawBytes(item, ("attributes._metadata__" + key), sentry_attribute.StringValue(value).RawJSON())
 		}
 
 		items = append(items, item)

@@ -1,6 +1,7 @@
 package environment_logs
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/brody192/locomotive/internal/logger"
@@ -10,7 +11,7 @@ import (
 func metadataName(metadataMap map[uuid.UUID]string, id uuid.UUID, label string) string {
 	name, ok := metadataMap[id]
 	if !ok {
-		logger.Stdout.Warn(label + " name could not be found")
+		logger.Stdout.Warn(fmt.Sprintf("%s name could not be found", label))
 		return "undefined"
 	}
 

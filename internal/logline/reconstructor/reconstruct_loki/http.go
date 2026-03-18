@@ -18,7 +18,7 @@ func HttpLogStreams(logs []http_logs.DeploymentHttpLogWithMetadata) ([]byte, err
 		stream := []byte(streamJSON)
 
 		for key, value := range logs[i].Metadata {
-			stream, _ = sjson.SetBytes(stream, "stream."+key, value)
+			stream, _ = sjson.SetBytes(stream, ("stream." + key), value)
 		}
 
 		stream, _ = sjson.SetBytes(stream, "stream.service_namespace", logs[i].Metadata[subscribe.MetadataKeyProjectName])

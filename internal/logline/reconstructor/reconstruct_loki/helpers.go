@@ -44,7 +44,7 @@ func flattenToStream(stream []byte, pathPrefix, keyPrefix string, value gjson.Re
 		if len(skip) > 0 && slices.Contains(skip, keyPrefix) {
 			return stream
 		}
-		stream, _ = sjson.SetBytes(stream, pathPrefix+"."+keyPrefix, value.String())
+		stream, _ = sjson.SetBytes(stream, (pathPrefix + "." + keyPrefix), value.String())
 	}
 	return stream
 }

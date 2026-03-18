@@ -53,7 +53,7 @@ func EnvironmentLogsEnvelope(logs []environment_logs.EnvironmentLogWithMetadata)
 		}
 
 		for key, value := range logs[i].Metadata {
-			item, _ = sjson.SetRawBytes(item, "attributes._metadata__"+key, sentry_attribute.StringValue(value).RawJSON())
+			item, _ = sjson.SetRawBytes(item, ("attributes._metadata__" + key), sentry_attribute.StringValue(value).RawJSON())
 		}
 
 		items = append(items, item)

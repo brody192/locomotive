@@ -73,20 +73,20 @@ var (
 // as a Sentry attribute under the "attributes." path prefix.
 func applyStringAttribute(item []byte, key, value string) []byte {
 	if i, err := strconv.ParseInt(value, 10, 64); err == nil {
-		item, _ = sjson.SetRawBytes(item, "attributes."+key, sentry_attribute.Int64Value(i).RawJSON())
+		item, _ = sjson.SetRawBytes(item, ("attributes." + key), sentry_attribute.Int64Value(i).RawJSON())
 		return item
 	}
 
 	if f, err := strconv.ParseFloat(value, 64); err == nil {
-		item, _ = sjson.SetRawBytes(item, "attributes."+key, sentry_attribute.Float64Value(f).RawJSON())
+		item, _ = sjson.SetRawBytes(item, ("attributes." + key), sentry_attribute.Float64Value(f).RawJSON())
 		return item
 	}
 
 	if b, err := strconv.ParseBool(value); err == nil {
 		if b {
-			item, _ = sjson.SetRawBytes(item, "attributes."+key, rawBoolTrue)
+			item, _ = sjson.SetRawBytes(item, ("attributes." + key), rawBoolTrue)
 		} else {
-			item, _ = sjson.SetRawBytes(item, "attributes."+key, rawBoolFalse)
+			item, _ = sjson.SetRawBytes(item, ("attributes." + key), rawBoolFalse)
 		}
 		return item
 	}
@@ -96,7 +96,7 @@ func applyStringAttribute(item []byte, key, value string) []byte {
 		return flattenToItem(item, key, parsed)
 	}
 
-	item, _ = sjson.SetRawBytes(item, "attributes."+key, sentry_attribute.StringValue(value).RawJSON())
+	item, _ = sjson.SetRawBytes(item, ("attributes." + key), sentry_attribute.StringValue(value).RawJSON())
 	return item
 }
 
@@ -131,15 +131,15 @@ func flattenToItem(item []byte, prefix string, value gjson.Result) []byte {
 			})
 		}
 	case gjson.String:
-		item, _ = sjson.SetRawBytes(item, "attributes."+prefix, sentry_attribute.StringValue(value.String()).RawJSON())
+		item, _ = sjson.SetRawBytes(item, ("attributes." + prefix), sentry_attribute.StringValue(value.String()).RawJSON())
 	case gjson.Number:
-		item, _ = sjson.SetRawBytes(item, "attributes."+prefix, sentry_attribute.Float64Value(value.Num).RawJSON())
+		item, _ = sjson.SetRawBytes(item, ("attributes." + prefix), sentry_attribute.Float64Value(value.Num).RawJSON())
 	case gjson.True:
 		item, _ = sjson.SetRawBytes(item, "attributes."+prefix, rawBoolTrue)
 	case gjson.False:
-		item, _ = sjson.SetRawBytes(item, "attributes."+prefix, rawBoolFalse)
+		item, _ = sjson.SetRawBytes(item, ("attributes." + prefix), rawBoolFalse)
 	case gjson.Null:
-		item, _ = sjson.SetRawBytes(item, "attributes."+prefix, rawNullStr)
+		item, _ = sjson.SetRawBytes(item, ("attributes." + prefix), rawNullStr)
 	}
 	return item
 }
