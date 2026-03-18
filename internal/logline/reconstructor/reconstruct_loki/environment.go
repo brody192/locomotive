@@ -2,7 +2,6 @@ package reconstruct_loki
 
 import (
 	"cmp"
-	"fmt"
 	"strconv"
 
 	"github.com/brody192/locomotive/internal/logline/reconstructor"
@@ -15,26 +14,31 @@ import (
 // https://grafana.com/docs/loki/latest/reference/loki-http-api/#ingest-logs
 
 func EnvironmentLogStreams(logs []environment_logs.EnvironmentLogWithMetadata) ([]byte, error) {
-	streams := []byte(lokiJSON)
+	streamObjects := make([][]byte, 0, len(logs))
 
 	for i := range logs {
+		stream := []byte(streamJSON)
+
 		for key, value := range logs[i].Metadata {
-			streams, _ = sjson.SetBytes(streams, fmt.Sprintf("streams.%d.stream.%s", i, key), value)
+			stream, _ = sjson.SetBytes(stream, "stream."+key, value)
 		}
 
-		streams, _ = sjson.SetBytes(streams, fmt.Sprintf("streams.%d.stream.service_namespace", i), logs[i].Metadata[subscribe.MetadataKeyProjectName])
+		stream, _ = sjson.SetBytes(stream, "stream.service_namespace", logs[i].Metadata[subscribe.MetadataKeyProjectName])
 
 		timestamp := strconv.FormatInt(cmp.Or(reconstructor.TryExtractTimestamp(logs[i]), logs[i].Log.Timestamp).UnixNano(), 10)
 
-		streams, _ = sjson.SetBytes(streams, fmt.Sprintf("streams.%d.values.0.0", i), timestamp)
-		streams, _ = sjson.SetBytes(streams, fmt.Sprintf("streams.%d.values.0.1", i), util.StripAnsi(logs[i].Log.Message))
+		stream, _ = sjson.SetBytes(stream, "values.0.0", timestamp)
+		stream, _ = sjson.SetBytes(stream, "values.0.1", util.StripAnsi(logs[i].Log.Message))
 
 		for j := range logs[i].Log.Attributes {
-			for key, value := range jsonToAttributes(logs[i].Log.Attributes[j].Key, logs[i].Log.Attributes[j].Value) {
-				streams, _ = sjson.SetBytes(streams, fmt.Sprintf("streams.%d.values.0.2.%s", i, key), value)
-			}
+			stream = applyJSONStringAttribute(stream, "values.0.2", logs[i].Log.Attributes[j].Key, logs[i].Log.Attributes[j].Value, nil)
 		}
+
+		streamObjects = append(streamObjects, stream)
 	}
 
-	return streams, nil
+	result := []byte(lokiJSON)
+	result, _ = sjson.SetRawBytes(result, "streams", reconstructor.RawJSONArray(streamObjects))
+
+	return result, nil
 }

@@ -1,63 +1,50 @@
 package reconstruct_loki
 
 import (
+	"slices"
+
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
-func jsonBytesToAttributes(prefix string, json []byte) map[string]string {
-	if !gjson.ValidBytes(json) {
-		return nil
+func applyJSONStringAttribute(stream []byte, pathPrefix, keyPrefix, jsonStr string, skip []string) []byte {
+	if !gjson.Valid(jsonStr) {
+		return stream
 	}
-
-	parsed := gjson.ParseBytes(json)
-	result := make(map[string]string)
-
-	flatten(prefix, parsed, result)
-
-	return result
+	return flattenToStream(stream, pathPrefix, keyPrefix, gjson.Parse(jsonStr), skip)
 }
 
-func jsonToAttributes(prefix string, json string) map[string]string {
-	if !gjson.Valid(json) {
-		return nil
+func applyJSONBytesAttributes(stream []byte, pathPrefix string, jsonBytes []byte, skip []string) []byte {
+	if !gjson.ValidBytes(jsonBytes) {
+		return stream
 	}
-
-	parsed := gjson.Parse(json)
-	result := make(map[string]string)
-
-	flatten(prefix, parsed, result)
-
-	return result
+	return flattenToStream(stream, pathPrefix, "", gjson.ParseBytes(jsonBytes), skip)
 }
 
-func flatten(prefix string, value gjson.Result, result map[string]string) {
+func flattenToStream(stream []byte, pathPrefix, keyPrefix string, value gjson.Result, skip []string) []byte {
 	switch value.Type {
 	case gjson.JSON:
 		switch {
 		case value.IsObject():
 			value.ForEach(func(key, val gjson.Result) bool {
 				newKey := key.String()
-
-				if prefix != "" {
-					newKey = prefix + "__" + key.String()
+				if keyPrefix != "" {
+					newKey = keyPrefix + "__" + key.String()
 				}
-
-				flatten(newKey, val, result)
-
+				stream = flattenToStream(stream, pathPrefix, newKey, val, skip)
 				return true
 			})
 		case value.IsArray():
 			value.ForEach(func(key, val gjson.Result) bool {
-				index := key.String()
-
-				newKey := prefix + "_" + index
-
-				flatten(newKey, val, result)
-
+				stream = flattenToStream(stream, pathPrefix, keyPrefix+"_"+key.String(), val, skip)
 				return true
 			})
 		}
 	default:
-		result[prefix] = value.String()
+		if len(skip) > 0 && slices.Contains(skip, keyPrefix) {
+			return stream
+		}
+		stream, _ = sjson.SetBytes(stream, pathPrefix+"."+keyPrefix, value.String())
 	}
+	return stream
 }

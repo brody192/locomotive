@@ -1,24 +1,22 @@
 package reconstruct_sentry
 
 import (
-	"crypto/rand"
+	"encoding/binary"
 	"encoding/hex"
+	"math/rand/v2"
 	"strconv"
 	"strings"
 
 	"github.com/brody192/locomotive/internal/logline/reconstructor/reconstruct_sentry/sentry_attribute"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 func generateRandomHexString() string {
-	bytes := make([]byte, 16)
-
-	_, err := rand.Read(bytes)
-	if err != nil {
-		panic("failed to generate random bytes: " + err.Error())
-	}
-
-	return hex.EncodeToString(bytes)
+	var buf [16]byte
+	binary.NativeEndian.PutUint64(buf[:8], rand.Uint64())
+	binary.NativeEndian.PutUint64(buf[8:], rand.Uint64())
+	return hex.EncodeToString(buf[:])
 }
 
 func getSeverityNumber(severity string) int {
@@ -65,80 +63,83 @@ func getLevelFromStatusCode(statusCode int64) (string, int) {
 	return "info", 9
 }
 
-func stringToSentryAttributes(prefix string, value string) map[string]sentry_attribute.Value {
+var (
+	rawBoolTrue  = sentry_attribute.BoolValue(true).RawJSON()
+	rawBoolFalse = sentry_attribute.BoolValue(false).RawJSON()
+	rawNullStr   = sentry_attribute.StringValue("null").RawJSON()
+)
+
+// applyStringAttribute infers the type of value and sets it directly on item
+// as a Sentry attribute under the "attributes." path prefix.
+func applyStringAttribute(item []byte, key, value string) []byte {
 	if i, err := strconv.ParseInt(value, 10, 64); err == nil {
-		return map[string]sentry_attribute.Value{prefix: sentry_attribute.Int64Value(i)}
+		item, _ = sjson.SetRawBytes(item, "attributes."+key, sentry_attribute.Int64Value(i).RawJSON())
+		return item
 	}
 
 	if f, err := strconv.ParseFloat(value, 64); err == nil {
-		return map[string]sentry_attribute.Value{prefix: sentry_attribute.Float64Value(f)}
+		item, _ = sjson.SetRawBytes(item, "attributes."+key, sentry_attribute.Float64Value(f).RawJSON())
+		return item
 	}
 
 	if b, err := strconv.ParseBool(value); err == nil {
-		return map[string]sentry_attribute.Value{prefix: sentry_attribute.BoolValue(b)}
+		if b {
+			item, _ = sjson.SetRawBytes(item, "attributes."+key, rawBoolTrue)
+		} else {
+			item, _ = sjson.SetRawBytes(item, "attributes."+key, rawBoolFalse)
+		}
+		return item
 	}
 
 	if gjson.Valid(value) {
 		parsed := gjson.Parse(value)
-		result := make(map[string]sentry_attribute.Value)
-
-		flatten(prefix, parsed, result)
-
-		return result
+		return flattenToItem(item, key, parsed)
 	}
 
-	return map[string]sentry_attribute.Value{prefix: sentry_attribute.StringValue(value)}
+	item, _ = sjson.SetRawBytes(item, "attributes."+key, sentry_attribute.StringValue(value).RawJSON())
+	return item
 }
 
-func jsonBytesToSentryAttributes(jsonBytes []byte) map[string]sentry_attribute.Value {
+// applyJSONBytesAttributes parses jsonBytes and flattens all fields directly
+// onto item as Sentry attributes.
+func applyJSONBytesAttributes(item []byte, jsonBytes []byte) []byte {
 	if !gjson.ValidBytes(jsonBytes) {
-		return nil
+		return item
 	}
-
-	parsed := gjson.ParseBytes(jsonBytes)
-	result := make(map[string]sentry_attribute.Value)
-
-	flatten("", parsed, result)
-
-	return result
+	return flattenToItem(item, "", gjson.ParseBytes(jsonBytes))
 }
 
-func flatten(prefix string, value gjson.Result, result map[string]sentry_attribute.Value) {
+// flattenToItem recursively walks a gjson.Result and sets each leaf value
+// directly on item as a raw Sentry attribute JSON object.
+func flattenToItem(item []byte, prefix string, value gjson.Result) []byte {
 	switch value.Type {
 	case gjson.JSON:
 		switch {
 		case value.IsObject():
 			value.ForEach(func(key, val gjson.Result) bool {
 				newKey := key.String()
-
 				if prefix != "" {
 					newKey = prefix + "__" + key.String()
 				}
-
-				flatten(newKey, val, result)
-
+				item = flattenToItem(item, newKey, val)
 				return true
 			})
 		case value.IsArray():
 			value.ForEach(func(key, val gjson.Result) bool {
-				index := key.String()
-
-				newKey := prefix + "[" + index + "]"
-
-				flatten(newKey, val, result)
-
+				item = flattenToItem(item, prefix+"["+key.String()+"]", val)
 				return true
 			})
 		}
 	case gjson.String:
-		result[prefix] = sentry_attribute.StringValue(value.String())
+		item, _ = sjson.SetRawBytes(item, "attributes."+prefix, sentry_attribute.StringValue(value.String()).RawJSON())
 	case gjson.Number:
-		result[prefix] = sentry_attribute.Float64Value(value.Num)
+		item, _ = sjson.SetRawBytes(item, "attributes."+prefix, sentry_attribute.Float64Value(value.Num).RawJSON())
 	case gjson.True:
-		result[prefix] = sentry_attribute.BoolValue(true)
+		item, _ = sjson.SetRawBytes(item, "attributes."+prefix, rawBoolTrue)
 	case gjson.False:
-		result[prefix] = sentry_attribute.BoolValue(false)
+		item, _ = sjson.SetRawBytes(item, "attributes."+prefix, rawBoolFalse)
 	case gjson.Null:
-		result[prefix] = sentry_attribute.StringValue("null")
+		item, _ = sjson.SetRawBytes(item, "attributes."+prefix, rawNullStr)
 	}
+	return item
 }

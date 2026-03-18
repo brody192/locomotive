@@ -1,9 +1,7 @@
 package reconstruct_sentry
 
 import (
-	"bytes"
 	"cmp"
-	"fmt"
 	"strconv"
 	"time"
 
@@ -16,8 +14,6 @@ import (
 )
 
 func EnvironmentLogsEnvelope(logs []environment_logs.EnvironmentLogWithMetadata) ([]byte, error) {
-	jsonObject := bytes.Buffer{}
-
 	eventID := generateRandomHexString()
 	timestamp := time.Now().Format(time.RFC3339Nano)
 
@@ -25,18 +21,14 @@ func EnvironmentLogsEnvelope(logs []environment_logs.EnvironmentLogWithMetadata)
 	firstLineData, _ = sjson.SetBytes(firstLineData, "event_id", eventID)
 	firstLineData, _ = sjson.SetBytes(firstLineData, "sent_at", timestamp)
 
-	jsonObject.Write(firstLineData)
-	jsonObject.WriteByte('\n')
-
 	secondLineData := []byte(LineTwo)
 	secondLineData, _ = sjson.SetBytes(secondLineData, "item_count", len(logs))
-
-	jsonObject.Write(secondLineData)
-	jsonObject.WriteByte('\n')
 
 	thirdLineData := []byte(LineThree)
 	thirdLineData, _ = sjson.SetBytes(thirdLineData, "event_id", eventID)
 	thirdLineData, _ = sjson.SetBytes(thirdLineData, "timestamp", timestamp)
+
+	items := make([][]byte, 0, len(logs))
 
 	for i := range logs {
 		item := []byte(Item)
@@ -57,20 +49,17 @@ func EnvironmentLogsEnvelope(logs []environment_logs.EnvironmentLogWithMetadata)
 				attribute.Value = s
 			}
 
-			for key, value := range stringToSentryAttributes(attribute.Key, attribute.Value) {
-				item, _ = sjson.SetBytes(item, fmt.Sprintf("attributes.%s", key), value)
-			}
+			item = applyStringAttribute(item, attribute.Key, attribute.Value)
 		}
 
 		for key, value := range logs[i].Metadata {
-			item, _ = sjson.SetBytes(item, fmt.Sprintf("attributes._metadata__%s", key), sentry_attribute.StringValue(value))
+			item, _ = sjson.SetRawBytes(item, "attributes._metadata__"+key, sentry_attribute.StringValue(value).RawJSON())
 		}
 
-		thirdLineData, _ = sjson.SetRawBytes(thirdLineData, fmt.Sprintf("items.%d", i), item)
+		items = append(items, item)
 	}
 
-	jsonObject.Write(thirdLineData)
-	jsonObject.WriteByte('\n')
+	thirdLineData, _ = sjson.SetRawBytes(thirdLineData, "items", reconstructor.RawJSONArray(items))
 
-	return jsonObject.Bytes(), nil
+	return reconstructor.RawJSONLines([][]byte{firstLineData, secondLineData, thirdLineData}), nil
 }
