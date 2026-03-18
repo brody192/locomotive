@@ -11,10 +11,10 @@ import (
 	"github.com/brody192/locomotive/internal/config"
 	"github.com/brody192/locomotive/internal/errgroup"
 	"github.com/brody192/locomotive/internal/logger"
+	"github.com/brody192/locomotive/internal/logline/serializer"
 	"github.com/brody192/locomotive/internal/railway"
 	"github.com/brody192/locomotive/internal/railway/subscribe/environment_logs"
 	"github.com/brody192/locomotive/internal/railway/subscribe/http_logs"
-	"github.com/brody192/locomotive/internal/webhook"
 )
 
 func main() {
@@ -77,7 +77,7 @@ func run() int {
 			return nil
 		}
 
-		return runLogPipeline(ctx, "deploy-logs", webhook.SerializeDeployLogs,
+		return runLogPipeline(ctx, "deploy-logs", serializer.DeployLogs,
 			func(ctx context.Context, track chan []environment_logs.EnvironmentLogWithMetadata) error {
 				return environment_logs.SubscribeToServiceLogs(ctx, gqlClient, track, config.Global.EnvironmentId, config.Global.ServiceIds)
 			}, &deployLogsProcessed)
@@ -89,7 +89,7 @@ func run() int {
 			return nil
 		}
 
-		return runLogPipeline(ctx, "http-logs", webhook.SerializeHttpLogs,
+		return runLogPipeline(ctx, "http-logs", serializer.HttpLogs,
 			func(ctx context.Context, track chan []http_logs.DeploymentHttpLogWithMetadata) error {
 				return http_logs.SubscribeToHttpLogs(ctx, gqlClient, track, config.Global.EnvironmentId, config.Global.ServiceIds)
 			}, &httpLogsProcessed)
