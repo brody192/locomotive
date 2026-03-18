@@ -28,11 +28,11 @@ func EnvironmentLogsSyslog(logs []environment_logs.EnvironmentLogWithMetadata) (
 			// Timestamp
 			cmp.Or(reconstructor.TryExtractTimestamp(logs[i]), logs[i].Log.Timestamp).Format(rfc5424time),
 			// Hostname
-			util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyProjectName]+"-"+util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyEnvironmentName])),
+			util.SanitizeString((logs[i].Metadata[subscribe.MetadataKeyProjectName] + "-" + util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyEnvironmentName]))),
 			// Service
 			util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyServiceName]),
 			// Message
-			logs[i].Log.Message,
+			util.StripAnsi(logs[i].Log.Message),
 			// Body (JSON object)
 			logObject,
 		)
