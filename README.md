@@ -43,30 +43,19 @@ Configuration is done through environment variables. See explanation and example
 
     </br>
 
-- `LOCOMOTIVE_ENVIRONMENT_ID` - The ID of the environment your services are in.
+- `LOCOMOTIVE_ENVIRONMENT_IDS` - The IDs of the environments your services are in.
 
-    **Required**.
+    **Optional**.
 
-    - Auto-filled to the current environment ID.
+    - Supports a single environment ID.
+    - Supports multiple environment IDs, separated with a comma.
+    - If omitted or empty, Locomotive queries Railway for all accessible environments and uses those.
 
-    Make sure to deploy Locomotive into the same environment as the services you want to monitor.
+    Make sure to deploy Locomotive into the same environments as the services you want to monitor.
 
     [Railway Best Practices](https://docs.railway.com/overview/best-practices#deploying-related-services-into-the-same-project)
 
-    Upon startup, Locomotive will verify that all the services exist within the set environment. If the environment does not exist, Locomotive will exit with an API error message.
-
-    If that check fails with an unauthorized error, you are likely using the wrong kind of API token.
-
-    </br>
-
-- `LOCOMOTIVE_SERVICE_IDS` - The IDs of the services you want to monitor.
-
-    **Required**.
-
-    - Supports a single service ID.
-    - Supports multiple service IDs, separated with a comma.
-
-    Upon startup, Locomotive will verify that all the services exist within the set environment. If any services do not exist, Locomotive will exit with an error and provide a list of the missing services.
+    Upon startup, Locomotive will fetch logs for all successful deployments in the configured environments. If an environment does not exist, Locomotive will exit with an API error message.
 
     If that check fails with an unauthorized error, you are likely using the wrong kind of API token.
 
