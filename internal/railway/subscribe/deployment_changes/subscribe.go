@@ -16,7 +16,7 @@ import (
 	"github.com/brody192/locomotive/internal/slice"
 )
 
-func SubscribeToDeploymentIdChanges(ctx context.Context, g *railway.GraphQLClient, deploymentIdSlice *slice.Sync[DeploymentIdWithInfo], changeDetected chan<- struct{}, environmentId uuid.UUID, serviceIds []uuid.UUID) error {
+func SubscribeToDeploymentIdChanges(ctx context.Context, g *railway.GraphQLClient, deploymentIdSlice *slice.Sync[DeploymentIdWithInfo], changeDetected chan<- struct{}, environmentId uuid.UUID) error {
 	environment := &queries.EnvironmentData{}
 
 	variables := map[string]any{
@@ -27,7 +27,7 @@ func SubscribeToDeploymentIdChanges(ctx context.Context, g *railway.GraphQLClien
 		return err
 	}
 
-	deploymentIdSlice.AppendMany(findSuccessfulDeploymentsIdsForWantedServiceIds(environment, serviceIds))
+	deploymentIdSlice.AppendMany(findSuccessfulDeploymentsIdsForWantedServiceIds(environment))
 
 	changeDetected <- struct{}{}
 
@@ -62,7 +62,7 @@ func SubscribeToDeploymentIdChanges(ctx context.Context, g *railway.GraphQLClien
 				return fmt.Errorf("error getting environment data for new environment hash: %w", err)
 			}
 
-			latestSuccessfulDeploymentIdsForWantedServiceIds := findSuccessfulDeploymentsIdsForWantedServiceIds(environment, serviceIds)
+			latestSuccessfulDeploymentIdsForWantedServiceIds := findSuccessfulDeploymentsIdsForWantedServiceIds(environment)
 
 			if len(latestSuccessfulDeploymentIdsForWantedServiceIds) == 0 {
 				// logger.Stdout.Debug("no new deployment id(s) for wanted service id(s)", slog.String("hash", environmentHash))

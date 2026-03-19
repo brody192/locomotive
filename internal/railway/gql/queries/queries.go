@@ -5,6 +5,9 @@ import _ "embed"
 //go:embed project.graphql
 var ProjectQuery string
 
+//go:embed projects.graphql
+var ProjectsQuery string
+
 //go:embed environment.graphql
 var EnvironmentQuery string
 

@@ -1,0 +1,15 @@
+query projects {
+	projects {
+		edges {
+			node {
+				environments {
+					edges {
+						node {
+							id
+						}
+					}
+				}
+			}
+		}
+	}
+}

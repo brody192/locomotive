@@ -82,9 +82,9 @@ func SubscribeToHttpLogs(ctx context.Context, g *railway.GraphQLClient, logTrack
 	ctx = context.WithValue(ctx, funcInitTimeKey, time.Now())
 
 	go func() {
-		logger.Stdout.Debug("starting deployment ID changes subscription", slog.String("environment_id", environmentId.String()), slog.Any("service_ids", serviceIds))
+		logger.Stdout.Debug("starting deployment ID changes subscription", slog.String("environment_id", environmentId.String()))
 
-		if err := deployment_changes.SubscribeToDeploymentIdChanges(ctx, g, deploymentIdSlice, changeDetected, environmentId, serviceIds); err != nil {
+		if err := deployment_changes.SubscribeToDeploymentIdChanges(ctx, g, deploymentIdSlice, changeDetected, environmentId); err != nil {
 			if errors.Is(err, context.Canceled) {
 				errorChan <- ctx.Err()
 				return

@@ -27,27 +27,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	allServicesExist, foundServices, missingServices, err := railway.VerifyAllServicesExistWithinEnvironment(gqlClient, config.Global.ServiceIds, config.Global.EnvironmentId)
-	if err != nil {
-		logger.Stderr.Error("error verifying if services exist within the environment", logger.ErrAttr(err))
-		os.Exit(1)
-	}
+	environmentIds := config.Global.EnvironmentIds
+	if len(environmentIds) == 0 {
+		fetchedEnvironmentIds, err := railway.FetchAllEnvironmentIDs(context.Background(), gqlClient)
+		if err != nil {
+			logger.Stderr.Error("error fetching environment ids", logger.ErrAttr(err))
+			os.Exit(1)
+		}
 
-	if !allServicesExist {
-		logger.Stderr.Error("all services must exist within the environment set by the LOCOMOTIVE_ENVIRONMENT_ID variable",
-			slog.Any("missing_service_ids", missingServices),
-			slog.Any("configured_service_ids", config.Global.ServiceIds),
-			slog.Any("found_service_ids", foundServices),
-			slog.Any("environment_id", config.Global.EnvironmentId),
-		)
-
-		os.Exit(1)
+		environmentIds = fetchedEnvironmentIds
 	}
 
 	logger.Stdout.Info("The locomotive is ready to depart...",
 		slog.String("webhook_url_host", config.Global.WebhookUrl.Host),
-		slog.Any("service_ids", config.Global.ServiceIds),
-		slog.Any("environment_id", config.Global.EnvironmentId),
+		slog.Any("environment_ids", environmentIds),
 		slog.Any("webhook_mode", config.Global.WebhookMode),
 		slog.Bool("enable_http_logs", config.Global.EnableHttpLogs),
 		slog.Bool("enable_deploy_logs", config.Global.EnableDeployLogs),
@@ -75,7 +68,17 @@ func main() {
 			return nil
 		}
 
-		return startStreamingDeployLogs(ctx, gqlClient, serviceLogTrack, config.Global.EnvironmentId, config.Global.ServiceIds)
+		deployLogGroup := errgroup.NewErrGroup()
+
+		for _, environmentId := range environmentIds {
+			environmentId := environmentId
+
+			deployLogGroup.Go(func() error {
+				return startStreamingDeployLogs(ctx, gqlClient, serviceLogTrack, environmentId, nil)
+			})
+		}
+
+		return deployLogGroup.Wait()
 	})
 
 	errGroup.Go(func() error {
@@ -84,7 +87,17 @@ func main() {
 			return nil
 		}
 
-		return startStreamingHttpLogs(ctx, gqlClient, httpLogTrack, config.Global.EnvironmentId, config.Global.ServiceIds)
+		httpLogGroup := errgroup.NewErrGroup()
+
+		for _, environmentId := range environmentIds {
+			environmentId := environmentId
+
+			httpLogGroup.Go(func() error {
+				return startStreamingHttpLogs(ctx, gqlClient, httpLogTrack, environmentId, nil)
+			})
+		}
+
+		return httpLogGroup.Wait()
 	})
 
 	logger.Stdout.Info("The locomotive is waiting for cargo...")
