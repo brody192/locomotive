@@ -245,7 +245,7 @@ Configuration is done through environment variables. See explanation and example
 
 - `LOCOMOTIVE_ADDITIONAL_HEADERS` - `signoz-ingestion-key=<SIGNOZ_INGESTION_KEY>`
 
-    The ingestion key can be found in your SigNoz Cloud dashboard under 'Settings' > 'Ingestion Settings'.
+    The ingestion URL and key can be found in your SigNoz Cloud dashboard under 'Settings' > 'Ingestion Settings'. See the [SigNoz Cloud Ingestion docs](https://signoz.io/docs/ingestion/signoz-cloud/overview/) for more information.
 
     </br>
 
