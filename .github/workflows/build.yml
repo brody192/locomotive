@@ -10,6 +10,7 @@ concurrency:
 
 jobs:
   build:
+    if: "!contains(github.event.pull_request.labels.*.name, 'beta')"
     uses: ./.github/workflows/docker-build.yml
     with:
       push: false
