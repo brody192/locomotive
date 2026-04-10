@@ -235,13 +235,14 @@ Configuration is done through environment variables. See explanation and example
 
 #### SigNoz
 
+> [!NOTE]
+> The `signoz` mode targets **SigNoz Cloud** only. For self-hosted SigNoz, use the [`otel_http`](#opentelemetry-http) mode with your OTel Collector URL (e.g. `http://<SIGNOZ_HOSTNAME>:4318/v1/logs`).
+
 - `LOCOMOTIVE_WEBHOOK_MODE` - `signoz`
 
 - `LOCOMOTIVE_WEBHOOK_URL` - `https://ingest.<REGION>.signoz.cloud:443/v1/logs`
 
     Replace `<REGION>` with your SigNoz Cloud region (e.g. `us`, `in`, `eu`).
-
-    For self-hosted SigNoz, use the URL of your OTel Collector (e.g. `https://<SIGNOZ_HOSTNAME>:4318/v1/logs`).
 
 - `LOCOMOTIVE_ADDITIONAL_HEADERS` - `signoz-ingestion-key=<SIGNOZ_INGESTION_KEY>`
 

@@ -95,7 +95,7 @@ var WebhookModeToConfig = map[WebhookMode]WebhookConfig{
 		HTTPLogReconstructorFunc:        reconstruct_otel.HttpLogsOtel,
 	},
 	WebhookModeSignoz: {
-		ExpectedHostContains:            []string{"signoz"},
+		ExpectedHostContains:            []string{"signoz.cloud"},
 		ExpectedHeaders:                 []string{"signoz-ingestion-key"},
 		Headers:                         map[string]string{},
 		EnvironmentLogReconstructorFunc: reconstruct_otel.EnvironmentLogsOtel,
