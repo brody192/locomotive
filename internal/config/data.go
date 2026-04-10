@@ -25,6 +25,7 @@ const (
 	WebhookModeLoki        WebhookMode = "loki"
 	WebhookModeSentry      WebhookMode = "sentry"
 	WebhookModeOtelHTTP    WebhookMode = "otel_http"
+	WebhookModeSignoz      WebhookMode = "signoz"
 
 	DefaultWebhookMode = WebhookModeJson
 )
@@ -89,6 +90,13 @@ var WebhookModeToConfig = map[WebhookMode]WebhookConfig{
 		HTTPLogReconstructorFunc:        reconstruct_sentry.HttpLogsEnvelope,
 	},
 	WebhookModeOtelHTTP: {
+		Headers:                         map[string]string{},
+		EnvironmentLogReconstructorFunc: reconstruct_otel.EnvironmentLogsOtel,
+		HTTPLogReconstructorFunc:        reconstruct_otel.HttpLogsOtel,
+	},
+	WebhookModeSignoz: {
+		ExpectedHostContains:            []string{"signoz.cloud"},
+		ExpectedHeaders:                 []string{"signoz-ingestion-key"},
 		Headers:                         map[string]string{},
 		EnvironmentLogReconstructorFunc: reconstruct_otel.EnvironmentLogsOtel,
 		HTTPLogReconstructorFunc:        reconstruct_otel.HttpLogsOtel,

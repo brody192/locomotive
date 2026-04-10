@@ -12,6 +12,7 @@ With tailored support for:
 - Loki
 - Sentry
 - Papertrail
+- SigNoz
 - OpenTelemetry HTTP
 
 And more with the standard JSON and JSON Lines modes.
@@ -79,6 +80,7 @@ Configuration is done through environment variables. See explanation and example
     - Example for Datadog: `https://http-intake.logs.datadoghq.com/api/v2/logs`
     - Example for Axiom: `https://api.axiom.co/v1/datasets/<DATASET_NAME>/ingest`
     - Example for BetterStack: `https://in.logs.betterstack.com`
+    - Example for SigNoz: `https://ingest.<REGION>.signoz.cloud:443/v1/logs`
     - Example for OpenTelemetry HTTP: `https://<OTEL_HTTP_ENDPOINT>/v1/logs`
 
     See [Provider specific setup](#provider-specific-setup) for more information.
@@ -114,6 +116,7 @@ Configuration is done through environment variables. See explanation and example
     - `betterstack`
     - `loki`
     - `sentry`
+    - `signoz`
     - `otel_http`
 
     </br>
@@ -227,6 +230,23 @@ Configuration is done through environment variables. See explanation and example
 - `LOCOMOTIVE_ADDITIONAL_HEADERS` - `X-Sentry-Auth=Sentry sentry_key=<SENTRY_KEY>`
 
     The key can again be found in the 'Client Keys (DSN)' section of the Sentry project settings; it will be the user part of the given DSN.
+
+    </br>
+
+#### SigNoz
+
+> [!NOTE]
+> The `signoz` mode targets **SigNoz Cloud** only. For self-hosted SigNoz, use the [`otel_http`](#opentelemetry-http) mode with your OTel Collector URL (e.g. `http://<SIGNOZ_HOSTNAME>:4318/v1/logs`).
+
+- `LOCOMOTIVE_WEBHOOK_MODE` - `signoz`
+
+- `LOCOMOTIVE_WEBHOOK_URL` - `https://ingest.<REGION>.signoz.cloud:443/v1/logs`
+
+    Replace `<REGION>` with your SigNoz Cloud region (e.g. `us`, `in`, `eu`).
+
+- `LOCOMOTIVE_ADDITIONAL_HEADERS` - `signoz-ingestion-key=<SIGNOZ_INGESTION_KEY>`
+
+    The ingestion URL and key can be found in your SigNoz Cloud dashboard under 'Settings' > 'Ingestion Settings'. See the [SigNoz Cloud Ingestion docs](https://signoz.io/docs/ingestion/signoz-cloud/overview/) for more information.
 
     </br>
 
