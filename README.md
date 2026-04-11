@@ -78,10 +78,10 @@ Configuration is done through environment variables. See explanation and example
     **Required**.
 
     - Example for Datadog: `https://http-intake.logs.datadoghq.com/api/v2/logs`
-    - Example for Axiom: `https://api.axiom.co/v1/datasets/<DATASET_NAME>/ingest`
+    - Example for Axiom: `https://api.axiom.co/v1/datasets/{DATASET_NAME}/ingest`
     - Example for BetterStack: `https://in.logs.betterstack.com`
-    - Example for SigNoz: `https://ingest.<REGION>.signoz.cloud:443/v1/logs`
-    - Example for OpenTelemetry HTTP: `https://<OTEL_HTTP_ENDPOINT>/v1/logs`
+    - Example for SigNoz: `https://ingest.{REGION}.signoz.cloud:443/v1/logs`
+    - Example for OpenTelemetry HTTP: `https://{OTEL_HTTP_ENDPOINT}/v1/logs`
 
     See [Provider specific setup](#provider-specific-setup) for more information.
 
@@ -93,8 +93,8 @@ Configuration is done through environment variables. See explanation and example
 
     - Useful for authentication. The string is in the format of a cookie, meaning each key-value pair is separated by a semicolon, and each key and value are separated by an equals sign.
 
-    - Example for Datadog: `ADDITIONAL_HEADERS=DD-API-KEY=<DD_API_KEY>;DD-APPLICATION-KEY=<DD_APP_KEY>`
-    - Example for Axiom/BetterStack: `ADDITIONAL_HEADERS=Authorization=Bearer <API_TOKEN>`
+    - Example for Datadog: `ADDITIONAL_HEADERS=DD-API-KEY={DD_API_KEY};DD-APPLICATION-KEY={DD_APP_KEY}`
+    - Example for Axiom/BetterStack: `ADDITIONAL_HEADERS=Authorization=Bearer {API_TOKEN}`
 
     See [Provider specific setup](#provider-specific-setup) for more information.
 
@@ -152,10 +152,10 @@ Configuration is done through environment variables. See explanation and example
 #### Papertrail
 
 - `LOCOMOTIVE_WEBHOOK_MODE` - `papertrail`
-- `LOCOMOTIVE_WEBHOOK_URL` - `https://<PAPERTRAIL_HOSTNAME>/v1/logs/bulk`
+- `LOCOMOTIVE_WEBHOOK_URL` - `https://{PAPERTRAIL_HOSTNAME}/v1/logs/bulk`
 
     The hostname can be found by adding a new destination and then opening the usage instructions.
-- `LOCOMOTIVE_ADDITIONAL_HEADERS` - `Authorization=Bearer <PAPERTRAIL_TOKEN>`
+- `LOCOMOTIVE_ADDITIONAL_HEADERS` - `Authorization=Bearer {PAPERTRAIL_TOKEN}`
 
     The token can be found by adding a new destination and then opening the usage instructions.
 
@@ -167,7 +167,7 @@ Configuration is done through environment variables. See explanation and example
 
 - `LOCOMOTIVE_WEBHOOK_URL` - `https://http-intake.logs.datadoghq.com/api/v2/logs`
 
-- `LOCOMOTIVE_ADDITIONAL_HEADERS` - `DD-API-KEY=<DD_API_KEY>;DD-APPLICATION-KEY=<DD_APP_KEY>`
+- `LOCOMOTIVE_ADDITIONAL_HEADERS` - `DD-API-KEY={DD_API_KEY};DD-APPLICATION-KEY={DD_APP_KEY}`
 
     </br>
 
@@ -175,11 +175,11 @@ Configuration is done through environment variables. See explanation and example
 
 - `LOCOMOTIVE_WEBHOOK_MODE` - `axiom`
 
-- `LOCOMOTIVE_WEBHOOK_URL` - `https://api.axiom.co/v1/datasets/<DATASET_NAME>/ingest`
+- `LOCOMOTIVE_WEBHOOK_URL` - `https://api.axiom.co/v1/datasets/{DATASET_NAME}/ingest`
 
     The dataset name can be found under the 'Datasets' tab in the Axiom UI.
 
-- `LOCOMOTIVE_ADDITIONAL_HEADERS` - `Authorization=Bearer <API_TOKEN>`
+- `LOCOMOTIVE_ADDITIONAL_HEADERS` - `Authorization=Bearer {API_TOKEN}`
 
     The API token can be generated from within your account settings under the 'API Tokens' tab.
 
@@ -189,13 +189,13 @@ Configuration is done through environment variables. See explanation and example
 
 - `LOCOMOTIVE_WEBHOOK_MODE` - `betterstack`
 
-- `LOCOMOTIVE_WEBHOOK_URL` - `https://<BETTERSTACK_HOSTNAME>`
+- `LOCOMOTIVE_WEBHOOK_URL` - `https://{BETTERSTACK_HOSTNAME}`
 
     The hostname is generated when connecting a new source; choose HTTP.
 
     You can also find the hostname in the source configuration.
 
-- `LOCOMOTIVE_ADDITIONAL_HEADERS` - `Authorization=Bearer <TOKEN>`
+- `LOCOMOTIVE_ADDITIONAL_HEADERS` - `Authorization=Bearer {TOKEN}`
 
     The token is generated when connecting a new source; choose HTTP.
 
@@ -207,13 +207,13 @@ Configuration is done through environment variables. See explanation and example
 
 - `LOCOMOTIVE_WEBHOOK_MODE` - `loki`
 
-- `LOCOMOTIVE_WEBHOOK_URL` - `https://<LOKI_HOSTNAME>/loki/api/v1/push`
+- `LOCOMOTIVE_WEBHOOK_URL` - `https://{LOKI_HOSTNAME}/loki/api/v1/push`
 
     The hostname would depend on where you are running Loki.
 
     Or, with username and password authentication:
 
-    `https://<USERNAME>:<PASSWORD>@<LOKI_HOSTNAME>/loki/api/v1/push`
+    `https://{USERNAME}:{PASSWORD}@{LOKI_HOSTNAME}/loki/api/v1/push`
 
     </br>
 
@@ -221,13 +221,13 @@ Configuration is done through environment variables. See explanation and example
 
 - `LOCOMOTIVE_WEBHOOK_MODE` - `sentry`
 
-- `LOCOMOTIVE_WEBHOOK_URL` - `https://<SENTRY_HOSTNAME>/api/<SENTRY_PROJECT_ID>/envelope/`
+- `LOCOMOTIVE_WEBHOOK_URL` - `https://{SENTRY_HOSTNAME}/api/{SENTRY_PROJECT_ID}/envelope/`
 
     The hostname can be found in the 'Client Keys (DSN)' section of the Sentry project settings; it will be the hostname of the given DSN.
 
     The project ID can be also be found in the 'Client Keys (DSN)' section of the Sentry project settings, it will be the path in the URL of the given DSN.
 
-- `LOCOMOTIVE_ADDITIONAL_HEADERS` - `X-Sentry-Auth=Sentry sentry_key=<SENTRY_KEY>`
+- `LOCOMOTIVE_ADDITIONAL_HEADERS` - `X-Sentry-Auth=Sentry sentry_key={SENTRY_KEY}`
 
     The key can again be found in the 'Client Keys (DSN)' section of the Sentry project settings; it will be the user part of the given DSN.
 
@@ -236,15 +236,15 @@ Configuration is done through environment variables. See explanation and example
 #### SigNoz
 
 > [!NOTE]
-> The `signoz` mode targets **SigNoz Cloud** only. For self-hosted SigNoz, use the [`otel_http`](#opentelemetry-http) mode with your OTel Collector URL (e.g. `http://<SIGNOZ_HOSTNAME>:4318/v1/logs`).
+> The `signoz` mode targets **SigNoz Cloud** only. For self-hosted SigNoz, use the [`otel_http`](#opentelemetry-http) mode with your OTel Collector URL (e.g. `http://{SIGNOZ_HOSTNAME}:4318/v1/logs`).
 
 - `LOCOMOTIVE_WEBHOOK_MODE` - `signoz`
 
-- `LOCOMOTIVE_WEBHOOK_URL` - `https://ingest.<REGION>.signoz.cloud:443/v1/logs`
+- `LOCOMOTIVE_WEBHOOK_URL` - `https://ingest.{REGION}.signoz.cloud:443/v1/logs`
 
-    Replace `<REGION>` with your SigNoz Cloud region (e.g. `us`, `in`, `eu`).
+    Replace `{REGION}` with your SigNoz Cloud region (e.g. `us`, `in`, `eu`).
 
-- `LOCOMOTIVE_ADDITIONAL_HEADERS` - `signoz-ingestion-key=<SIGNOZ_INGESTION_KEY>`
+- `LOCOMOTIVE_ADDITIONAL_HEADERS` - `signoz-ingestion-key={SIGNOZ_INGESTION_KEY}`
 
     The ingestion URL and key can be found in your SigNoz Cloud dashboard under 'Settings' > 'Ingestion Settings'. See the [SigNoz Cloud Ingestion docs](https://signoz.io/docs/ingestion/signoz-cloud/overview/) for more information.
 
@@ -254,6 +254,6 @@ Configuration is done through environment variables. See explanation and example
 
 - `LOCOMOTIVE_WEBHOOK_MODE` - `otel_http`
 
-- `LOCOMOTIVE_WEBHOOK_URL` - `https://<OTEL_COLLECTOR_HOSTNAME>/v1/logs`
+- `LOCOMOTIVE_WEBHOOK_URL` - `https://{OTEL_COLLECTOR_HOSTNAME}/v1/logs`
 
     The hostname would depend on where you are running your OpenTelemetry Collector. Remember to also add the port if necessary, likely `4318`.
