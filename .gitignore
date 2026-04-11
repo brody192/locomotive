@@ -27,3 +27,5 @@ go.work
 .env
 
 # End of https://www.toptal.com/developers/gitignore/api/go
+locomotive
+.DS_Store

@@ -30,10 +30,10 @@ func init() {
 	if err := env.ParseWithOptions(&Global, env.Options{
 		Prefix: "LOCOMOTIVE_",
 		FuncMap: map[reflect.Type]env.ParserFunc{
-			reflect.TypeOf(uuid.UUID{}): func(envVar string) (any, error) {
+			reflect.TypeFor[uuid.UUID](): func(envVar string) (any, error) {
 				return uuid.FromString(strings.TrimSpace(envVar))
 			},
-			reflect.TypeOf([]uuid.UUID{}): func(envVar string) (any, error) {
+			reflect.TypeFor[[]uuid.UUID](): func(envVar string) (any, error) {
 				envVarSplit := strings.Split(envVar, ",")
 
 				uuids := []uuid.UUID{}
@@ -55,10 +55,10 @@ func init() {
 
 				return uuids, nil
 			},
-			reflect.TypeOf(false): func(envVar string) (any, error) {
+			reflect.TypeFor[bool](): func(envVar string) (any, error) {
 				return strconv.ParseBool(strings.TrimSpace(envVar))
 			},
-			reflect.TypeOf(url.URL{}): func(envVar string) (any, error) {
+			reflect.TypeFor[url.URL](): func(envVar string) (any, error) {
 				envVarTrimmed := strings.TrimSpace(envVar)
 
 				if !schemeRegex.MatchString(envVarTrimmed) {

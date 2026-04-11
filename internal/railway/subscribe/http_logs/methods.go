@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"time"
 
 	cache "github.com/Code-Hex/go-generics-cache"
@@ -13,13 +14,14 @@ import (
 
 	"github.com/brody192/locomotive/internal/railway"
 	"github.com/brody192/locomotive/internal/railway/gql/queries"
+	"github.com/brody192/locomotive/internal/railway/subscribe"
 )
 
 var metadataDeploymentCache = cache.New[uuid.UUID, DeploymentHttpLogMetadata]()
 
 func getMetadataForDeployment(ctx context.Context, g *railway.GraphQLClient, deploymentId uuid.UUID) (DeploymentHttpLogMetadata, error) {
 	if cached, ok := metadataDeploymentCache.Get(deploymentId); ok {
-		return cached, nil
+		return maps.Clone(cached), nil
 	}
 
 	if g.Client == nil {
@@ -38,16 +40,16 @@ func getMetadataForDeployment(ctx context.Context, g *railway.GraphQLClient, dep
 
 	metadata := DeploymentHttpLogMetadata{}
 
-	metadata["service_name"] = deployment.Deployment.Service.Name
-	metadata["service_id"] = deployment.Deployment.Service.ID.String()
+	metadata[subscribe.MetadataKeyServiceName] = deployment.Deployment.Service.Name
+	metadata[subscribe.MetadataKeyServiceID] = deployment.Deployment.Service.ID.String()
 
-	metadata["environment_name"] = deployment.Deployment.Environment.Name
-	metadata["environment_id"] = deployment.Deployment.Environment.ID.String()
+	metadata[subscribe.MetadataKeyEnvironmentName] = deployment.Deployment.Environment.Name
+	metadata[subscribe.MetadataKeyEnvironmentID] = deployment.Deployment.Environment.ID.String()
 
-	metadata["project_name"] = deployment.Deployment.Service.Project.Name
-	metadata["project_id"] = deployment.Deployment.Service.Project.ID.String()
+	metadata[subscribe.MetadataKeyProjectName] = deployment.Deployment.Service.Project.Name
+	metadata[subscribe.MetadataKeyProjectID] = deployment.Deployment.Service.Project.ID.String()
 
-	metadata["deployment_id"] = deploymentId.String()
+	metadata[subscribe.MetadataKeyDeploymentID] = deploymentId.String()
 
 	metadataDeploymentCache.Set(deploymentId, metadata, cache.WithExpiration((10 * time.Minute)))
 

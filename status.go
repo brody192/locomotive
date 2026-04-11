@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"runtime"
 	"sync/atomic"
@@ -11,54 +12,63 @@ import (
 	"github.com/brody192/locomotive/internal/util"
 )
 
-func reportStatusAsync(deployLogsProcessed *atomic.Int64, httpLogsProcessed *atomic.Int64) {
-	initReport := make(chan struct{}, 1)
-
-	var prevDeployLogs, prevHttpLogs int64
+func reportStatusAsync(ctx context.Context, deployLogsProcessed *atomic.Int64, httpLogsProcessed *atomic.Int64) {
+	var prevDeployLogs, prevHttpLogs atomic.Int64
 
 	go func() {
-		t := time.NewTicker(50 * time.Millisecond)
-		defer t.Stop()
+		// Phase 1: poll at high frequency until the first logs arrive
+		t := time.NewTicker(500 * time.Millisecond)
 
-		for range t.C {
-			deployLogsProcessed := deployLogsProcessed.Load()
-			httpLogsProcessed := httpLogsProcessed.Load()
+		for {
+			select {
+			case <-ctx.Done():
+				t.Stop()
+				return
+			case <-t.C:
+			}
 
-			if deployLogsProcessed > 0 || httpLogsProcessed > 0 {
+			dl := deployLogsProcessed.Load()
+			hl := httpLogsProcessed.Load()
+
+			if dl > 0 || hl > 0 {
 				logger.Stdout.Info("The locomotive is chugging along...",
-					slog.Int64("deploy_logs_processed", deployLogsProcessed),
-					slog.Int64("http_logs_processed", httpLogsProcessed),
+					slog.Int64("deploy_logs_processed", dl),
+					slog.Int64("http_logs_processed", hl),
 				)
 
-				prevDeployLogs = deployLogsProcessed
-				prevHttpLogs = httpLogsProcessed
+				prevDeployLogs.Store(dl)
+				prevHttpLogs.Store(hl)
 
-				close(initReport)
-				return
+				break
 			}
 		}
-	}()
 
-	go func() {
-		<-initReport
+		t.Stop()
 
-		t := time.NewTicker(config.Global.ReportStatusEvery)
+		// Phase 2: periodic status reporting
+		t = time.NewTicker(config.Global.ReportStatusEvery)
 		defer t.Stop()
 
-		for range t.C {
-			deployLogsProcessed := deployLogsProcessed.Load()
-			httpLogsProcessed := httpLogsProcessed.Load()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+			}
 
-			if deployLogsProcessed == 0 && httpLogsProcessed == 0 {
+			dl := deployLogsProcessed.Load()
+			hl := httpLogsProcessed.Load()
+
+			if dl == 0 && hl == 0 {
 				continue
 			}
 
 			statusLog := logger.Stdout.With(
-				slog.Int64("deploy_logs_processed", deployLogsProcessed),
-				slog.Int64("http_logs_processed", httpLogsProcessed),
+				slog.Int64("deploy_logs_processed", dl),
+				slog.Int64("http_logs_processed", hl),
 			)
 
-			if logger.StdoutLvl.Level() == slog.LevelDebug {
+			if logger.Stdout.Enabled(context.Background(), slog.LevelDebug) {
 				memStats := &runtime.MemStats{}
 				runtime.ReadMemStats(memStats)
 
@@ -72,14 +82,14 @@ func reportStatusAsync(deployLogsProcessed *atomic.Int64, httpLogsProcessed *ato
 				)
 			}
 
-			if deployLogsProcessed == prevDeployLogs && httpLogsProcessed == prevHttpLogs {
+			if dl == prevDeployLogs.Load() && hl == prevHttpLogs.Load() {
 				statusLog.Info("The locomotive is waiting for cargo...")
 			} else {
 				statusLog.Info("The locomotive is chugging along...")
 			}
 
-			prevDeployLogs = deployLogsProcessed
-			prevHttpLogs = httpLogsProcessed
+			prevDeployLogs.Store(dl)
+			prevHttpLogs.Store(hl)
 		}
 	}()
 }

@@ -4,18 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"time"
 
 	"github.com/brody192/locomotive/internal/logger"
 	"github.com/brody192/locomotive/internal/railway"
 	"github.com/brody192/locomotive/internal/railway/gql/subscriptions"
 	"github.com/brody192/locomotive/internal/railway/subscribe"
-	"github.com/coder/websocket"
 	"github.com/flexstack/uuid"
 )
 
-func createInvalidationRequestSubscription(ctx context.Context, g *railway.GraphQLClient, environmentId uuid.UUID) (*websocket.Conn, error) {
+func createInvalidationRequestSubscription(ctx context.Context, g *railway.GraphQLClient, environmentId uuid.UUID) (*subscribe.Conn, error) {
 	payload := &subscriptions.CanvasInvalidationSubscriptionPayload{
 		Query: subscriptions.CanvasInvalidationSubscription,
 		Variables: &subscriptions.CanvasInvalidationSubscriptionVariables{
@@ -26,42 +24,10 @@ func createInvalidationRequestSubscription(ctx context.Context, g *railway.Graph
 	return g.CreateWebSocketSubscription(ctx, payload)
 }
 
-// resubscribeWithRetry handles reconnection logic with retries and proper context cancellation
-func resubscribeWithRetry(ctx context.Context, g *railway.GraphQLClient, environmentId uuid.UUID, conn *websocket.Conn) (*websocket.Conn, error) {
-	subscribe.SafeConnCloseNow(conn)
-
-	// Track total retry time with a maximum of 3600 seconds (1 hour)
-	maxRetryDuration := 3600 * time.Second
-	retryStart := time.Now()
-
-	// Try to resubscribe with retry loop
-	for {
-		// Check if we've exceeded the maximum retry duration
-		if time.Since(retryStart) > maxRetryDuration {
-			return nil, fmt.Errorf("failed to resubscribe after %v: maximum retry duration exceeded", maxRetryDuration)
-		}
-
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-			newConn, err := createInvalidationRequestSubscription(ctx, g, environmentId)
-			if err != nil {
-				logger.Stdout.Debug("error resubscribing, will retry in 1 second", logger.ErrAttr(err))
-
-				// Sleep with context cancellation awareness
-				select {
-				case <-ctx.Done():
-					return nil, ctx.Err()
-				case <-time.After(1 * time.Second):
-					continue
-				}
-			}
-
-			// Successfully resubscribed
-			return newConn, nil
-		}
-	}
+func resubscribeWithRetry(ctx context.Context, g *railway.GraphQLClient, environmentId uuid.UUID, conn *subscribe.Conn) (*subscribe.Conn, error) {
+	return subscribe.ResubscribeWithRetry(ctx, conn, (3600 * time.Second), func(ctx context.Context) (*subscribe.Conn, error) {
+		return createInvalidationRequestSubscription(ctx, g, environmentId)
+	})
 }
 
 func SubscribeToInvalidationRequests(ctx context.Context, g *railway.GraphQLClient, environmentHashTrack chan<- string, environmentId uuid.UUID) error {
@@ -70,15 +36,14 @@ func SubscribeToInvalidationRequests(ctx context.Context, g *railway.GraphQLClie
 		return err
 	}
 
-	defer conn.CloseNow()
+	defer func() { conn.CloseNow() }()
 
 	lastHash := ""
 
 	for {
-		_, payload, err := subscribe.SafeConnRead(conn, ctx)
+		_, payload, err := conn.Read(ctx)
 		if err != nil {
 			logger.Stdout.Debug("resubscribing",
-				slog.String("from", "SubscribeToInvalidationRequests_SafeConnRead"),
 				logger.ErrAttr(err),
 			)
 
@@ -96,9 +61,8 @@ func SubscribeToInvalidationRequests(ctx context.Context, g *railway.GraphQLClie
 			return fmt.Errorf("error unmarshalling invalidation request: %w", err)
 		}
 
-		if invalidationRequest.Type != subscriptions.SubscriptionTypeNext || invalidationRequest.Type == subscriptions.SubscriptionTypeComplete {
+		if invalidationRequest.Type != subscriptions.SubscriptionTypeNext {
 			logger.Stdout.Debug("resubscribing",
-				slog.String("from", "SubscribeToInvalidationRequests_TypeNotNext"),
 				logger.ErrAttr(fmt.Errorf("log type not next: %s", invalidationRequest.Type)),
 			)
 
@@ -123,6 +87,10 @@ func SubscribeToInvalidationRequests(ctx context.Context, g *railway.GraphQLClie
 
 		lastHash = invalidationRequest.Payload.Data.CanvasInvalidation.ID
 
-		environmentHashTrack <- invalidationRequest.Payload.Data.CanvasInvalidation.ID
+		select {
+		case environmentHashTrack <- invalidationRequest.Payload.Data.CanvasInvalidation.ID:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 }

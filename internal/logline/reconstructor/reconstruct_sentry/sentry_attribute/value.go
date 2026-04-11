@@ -17,9 +17,10 @@
 package sentry_attribute
 
 import (
-	"encoding/json"
 	"fmt"
 	"strconv"
+
+	"github.com/tidwall/sjson"
 )
 
 // Type describes the type of the data Value holds.
@@ -106,10 +107,12 @@ func (v Value) AsString() string {
 	return v.stringly
 }
 
+const baseValueJSON = `{"value":"","type":""}`
+
 type unknownValueType struct{}
 
-// AsInterface returns Value's data as interface{}.
-func (v Value) AsInterface() interface{} {
+// AsInterface returns Value's data as any.
+func (v Value) AsInterface() any {
 	switch v.Type() {
 	case BOOL:
 		return v.AsBool()
@@ -139,17 +142,30 @@ func (v Value) String() string {
 	}
 }
 
+// RawJSON returns the Sentry attribute JSON encoding of the Value
+// as raw bytes, built from the base template using sjson.
+func (v Value) RawJSON() []byte {
+	buf := []byte(baseValueJSON)
+	switch v.vtype {
+	case BOOL:
+		buf, _ = sjson.SetBytes(buf, "value", v.AsBool())
+		buf, _ = sjson.SetBytes(buf, "type", "boolean")
+	case INT64:
+		buf, _ = sjson.SetBytes(buf, "value", v.AsInt64())
+		buf, _ = sjson.SetBytes(buf, "type", "integer")
+	case FLOAT64:
+		buf, _ = sjson.SetBytes(buf, "value", v.AsFloat64())
+		buf, _ = sjson.SetBytes(buf, "type", "double")
+	case STRING:
+		buf, _ = sjson.SetBytes(buf, "value", v.stringly)
+		buf, _ = sjson.SetBytes(buf, "type", "string")
+	}
+	return buf
+}
+
 // MarshalJSON returns the JSON encoding of the Value.
 func (v Value) MarshalJSON() ([]byte, error) {
-	var jsonVal struct {
-		Value interface{} `json:"value"`
-		Type  string      `json:"type"`
-	}
-
-	jsonVal.Value = v.AsInterface()
-	jsonVal.Type = v.Type().String()
-
-	return json.Marshal(jsonVal)
+	return v.RawJSON(), nil
 }
 
 func (t Type) String() string {

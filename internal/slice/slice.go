@@ -35,7 +35,7 @@ func (s *Sync[T]) Get() []T {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	return s.items
+	return append([]T(nil), s.items...)
 }
 
 func (s *Sync[T]) Contains(item T) bool {

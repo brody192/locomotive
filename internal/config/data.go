@@ -56,8 +56,8 @@ var WebhookModeToConfig = map[WebhookMode]WebhookConfig{
 			// Note: Papertrail accepts JSON Lines, yet only accepts the JSON content type.
 			"Content-Type": "application/json",
 		},
-		EnvironmentLogReconstructorFunc: reconstruct_papertrail.EnvironmentLogsJsonLines,
-		HTTPLogReconstructorFunc:        reconstruct_papertrail.HttpLogsJsonLines,
+		EnvironmentLogReconstructorFunc: reconstruct_papertrail.EnvironmentLogsSyslog,
+		HTTPLogReconstructorFunc:        reconstruct_papertrail.HttpLogsSyslog,
 	},
 	WebhookModeDatadog: {
 		ExpectedHostContains:            []string{"datadog"},

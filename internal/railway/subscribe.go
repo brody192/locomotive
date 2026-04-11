@@ -5,15 +5,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/brody192/locomotive/internal/railway/gql/subscriptions"
+	"github.com/brody192/locomotive/internal/railway/subscribe"
 	"github.com/coder/websocket"
 	"github.com/flexstack/uuid"
 )
 
-func (g *GraphQLClient) CreateWebSocketSubscription(ctx context.Context, payload any) (*websocket.Conn, error) {
+func (g *GraphQLClient) CreateWebSocketSubscription(ctx context.Context, payload any) (*subscribe.Conn, error) {
 	subPayload := map[string]any{
 		"id":      uuid.Must(uuid.NewV4()),
 		"type":    subscriptions.SubscriptionTypeSubscribe,
@@ -27,7 +29,7 @@ func (g *GraphQLClient) CreateWebSocketSubscription(ctx context.Context, payload
 
 	opts := &websocket.DialOptions{
 		HTTPHeader: http.Header{
-			"Authorization": []string{"Bearer " + g.AuthToken.String()},
+			"Authorization": []string{fmt.Sprintf("Bearer %s", g.AuthToken.String())},
 			"Content-Type":  []string{"application/json"},
 		},
 		Subprotocols: []string{"graphql-transport-ws"},
@@ -44,21 +46,25 @@ func (g *GraphQLClient) CreateWebSocketSubscription(ctx context.Context, payload
 	c.SetReadLimit(-1)
 
 	if err := c.Write(ctx, websocket.MessageText, connectionInit); err != nil {
+		c.CloseNow()
 		return nil, err
 	}
 
 	_, ackMessage, err := c.Read(ctx)
 	if err != nil {
+		c.CloseNow()
 		return nil, err
 	}
 
 	if !bytes.Equal(ackMessage, connectionAck) {
+		c.CloseNow()
 		return nil, errors.New("did not receive connection ack from server")
 	}
 
 	if err := c.Write(ctx, websocket.MessageText, payloadBytes); err != nil {
+		c.CloseNow()
 		return nil, err
 	}
 
-	return c, nil
+	return subscribe.NewConn(ctx, c), nil
 }

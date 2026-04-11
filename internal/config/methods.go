@@ -15,14 +15,13 @@ func (h *AdditionalHeaders) UnmarshalText(envByte []byte) error {
 	envStringTrimmed := strings.TrimSpace(envString)
 
 	if envStringTrimmed == "" {
-		return fmt.Errorf("AdditionalHeaders is empty")
+		*h = make(map[string]string)
+		return nil
 	}
 
 	headers := make(map[string]string)
 
-	headerPairs := strings.Split(envStringTrimmed, ";")
-
-	for _, header := range headerPairs {
+	for header := range strings.SplitSeq(envStringTrimmed, ";") {
 		keyValue := strings.SplitN(header, "=", 2)
 
 		if len(keyValue) != 2 {

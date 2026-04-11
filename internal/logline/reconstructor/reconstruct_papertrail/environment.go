@@ -1,21 +1,20 @@
 package reconstruct_papertrail
 
 import (
-	"bytes"
 	"cmp"
 	"fmt"
 	"time"
-	"unsafe"
 
 	"github.com/brody192/locomotive/internal/logline/reconstructor"
+	"github.com/brody192/locomotive/internal/railway/subscribe"
 	"github.com/brody192/locomotive/internal/railway/subscribe/environment_logs"
 	"github.com/brody192/locomotive/internal/util"
 	"github.com/tidwall/sjson"
 )
 
 // reconstruct multiple deployment logs into json lines with a custom timestamp attribute
-func EnvironmentLogsJsonLines(logs []environment_logs.EnvironmentLogWithMetadata) ([]byte, error) {
-	lines := bytes.Buffer{}
+func EnvironmentLogsSyslog(logs []environment_logs.EnvironmentLogWithMetadata) ([]byte, error) {
+	lines := make([][]byte, 0, len(logs))
 
 	for i := range logs {
 		logObject, err := environmentLogJson(logs[i])
@@ -23,39 +22,42 @@ func EnvironmentLogsJsonLines(logs []environment_logs.EnvironmentLogWithMetadata
 			return nil, err
 		}
 
-		fmt.Fprintf(&lines, "<%d>%s %s %s: %s ",
+		line := formatSyslogLine(
+			// Severity
 			getSeverityNumberFromSeverity(logs[i].Log.Severity),
-			cmp.Or(reconstructor.TryExtractTimestamp(logs[i]), logs[i].Log.Timestamp).Format(time.StampNano),
-			(util.SanitizeString(logs[i].Metadata["project_name"] + "-" + util.SanitizeString(logs[i].Metadata["environment_name"]))),
-			util.SanitizeString(logs[i].Metadata["service_name"]),
-			logs[i].Log.Message,
+			// Timestamp
+			cmp.Or(reconstructor.TryExtractTimestamp(logs[i]), logs[i].Log.Timestamp).Format(rfc5424time),
+			// Hostname
+			util.SanitizeString((logs[i].Metadata[subscribe.MetadataKeyProjectName] + "-" + util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyEnvironmentName]))),
+			// Service
+			util.SanitizeString(logs[i].Metadata[subscribe.MetadataKeyServiceName]),
+			// Message
+			util.StripAnsi(logs[i].Log.Message),
+			// Body (JSON object)
+			logObject,
 		)
 
-		lines.Write(logObject)
-
-		if i < (len(logs) - 1) {
-			lines.WriteByte('\n')
-		}
+		lines = append(lines, line)
 	}
 
-	return lines.Bytes(), nil
+	return joinSyslogLines(lines), nil
 }
 
 // reconstruct a single deployment log into a raw json object
 func environmentLogJson(log environment_logs.EnvironmentLogWithMetadata) ([]byte, error) {
-	object := `{}`
+	object := []byte(reconstructor.EmptyJSONObject)
 
 	for key, value := range log.Metadata {
-		object, _ = sjson.Set(object, fmt.Sprintf("_metadata.%s", key), value)
+		object, _ = sjson.SetBytes(object, fmt.Sprintf("_metadata.%s", key), value)
 	}
 
-	object, _ = sjson.Set(object, "severity", log.Log.Severity)
+	object, _ = sjson.SetBytes(object, "severity", log.Log.Severity)
 
 	for i := range log.Log.Attributes {
-		object, _ = sjson.SetRaw(object, log.Log.Attributes[i].Key, log.Log.Attributes[i].Value)
+		object, _ = sjson.SetRawBytes(object, log.Log.Attributes[i].Key, []byte(log.Log.Attributes[i].Value))
 	}
 
-	object, _ = sjson.Set(object, "timestamp", cmp.Or(reconstructor.TryExtractTimestamp(log), log.Log.Timestamp).Format(time.RFC3339Nano))
+	object, _ = sjson.SetBytes(object, "timestamp", cmp.Or(reconstructor.TryExtractTimestamp(log), log.Log.Timestamp).Format(time.RFC3339Nano))
 
-	return unsafe.Slice(unsafe.StringData(object), len(object)), nil
+	return object, nil
 }

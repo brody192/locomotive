@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/brody192/locomotive/internal/railway/subscribe"
 	"github.com/tidwall/gjson"
 )
 
@@ -73,20 +74,20 @@ func buildLogsData[T MetadataProvider](logs []T, buildRecord func(log T, nowNano
 func buildResourceAttributes(metadata map[string]string) []attribute {
 	var attrs []attribute
 
-	if serviceName, ok := metadata["service_name"]; ok {
+	if serviceName, ok := metadata[subscribe.MetadataKeyServiceName]; ok {
 		attrs = append(attrs, stringAttribute("service.name", serviceName))
 	}
 
-	if environmentName, ok := metadata["environment_name"]; ok {
+	if environmentName, ok := metadata[subscribe.MetadataKeyEnvironmentName]; ok {
 		attrs = append(attrs, stringAttribute("deployment.environment.name", environmentName))
 	}
 
-	if projectName, ok := metadata["project_name"]; ok {
+	if projectName, ok := metadata[subscribe.MetadataKeyProjectName]; ok {
 		attrs = append(attrs, stringAttribute("service.namespace", projectName))
 	}
 
 	for key, value := range metadata {
-		if key == "service_name" || key == "environment_name" || key == "project_name" {
+		if key == subscribe.MetadataKeyServiceName || key == subscribe.MetadataKeyEnvironmentName || key == subscribe.MetadataKeyProjectName {
 			continue
 		}
 		attrs = append(attrs, stringAttribute(key, value))

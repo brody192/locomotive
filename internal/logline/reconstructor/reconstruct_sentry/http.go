@@ -1,63 +1,53 @@
 package reconstruct_sentry
 
 import (
-	"bytes"
-	"fmt"
 	"time"
 
+	"github.com/brody192/locomotive/internal/logline/reconstructor"
 	"github.com/brody192/locomotive/internal/logline/reconstructor/reconstruct_sentry/sentry_attribute"
 	"github.com/brody192/locomotive/internal/railway/subscribe/http_logs"
 	"github.com/tidwall/sjson"
 )
 
 func HttpLogsEnvelope(logs []http_logs.DeploymentHttpLogWithMetadata) ([]byte, error) {
-	jsonObject := bytes.Buffer{}
-
 	eventID := generateRandomHexString()
 	timestamp := time.Now().Format(time.RFC3339Nano)
 
-	firstLineData := LineOne
-	firstLineData, _ = sjson.Set(firstLineData, "event_id", eventID)
-	firstLineData, _ = sjson.Set(firstLineData, "sent_at", timestamp)
+	firstLineData := []byte(LineOne)
+	firstLineData, _ = sjson.SetBytes(firstLineData, "event_id", eventID)
+	firstLineData, _ = sjson.SetBytes(firstLineData, "sent_at", timestamp)
 
-	jsonObject.WriteString(firstLineData)
-	jsonObject.WriteByte('\n')
+	secondLineData := []byte(LineTwo)
+	secondLineData, _ = sjson.SetBytes(secondLineData, "item_count", len(logs))
 
-	secondLineData := LineTwo
-	secondLineData, _ = sjson.Set(secondLineData, "item_count", len(logs))
+	thirdLineData := []byte(LineThree)
+	thirdLineData, _ = sjson.SetBytes(thirdLineData, "event_id", eventID)
+	thirdLineData, _ = sjson.SetBytes(thirdLineData, "timestamp", timestamp)
 
-	jsonObject.WriteString(secondLineData)
-	jsonObject.WriteByte('\n')
-
-	thirdLineData := LineThree
-	thirdLineData, _ = sjson.Set(thirdLineData, "event_id", eventID)
-	thirdLineData, _ = sjson.Set(thirdLineData, "timestamp", timestamp)
+	items := make([][]byte, 0, len(logs))
 
 	for i := range logs {
-		item := Item
-		item, _ = sjson.Set(item, "timestamp", logs[i].Timestamp.Format(time.RFC3339Nano))
-		item, _ = sjson.Set(item, "trace_id", generateRandomHexString())
+		item := []byte(Item)
+		item, _ = sjson.SetBytes(item, "timestamp", logs[i].Timestamp.Format(time.RFC3339Nano))
+		item, _ = sjson.SetBytes(item, "trace_id", generateRandomHexString())
 
 		level, severityNumber := getLevelFromStatusCode(logs[i].StatusCode)
-		item, _ = sjson.Set(item, "level", level)
-		item, _ = sjson.Set(item, "severity_number", severityNumber)
-		item, _ = sjson.Set(item, "body", logs[i].Path)
+		item, _ = sjson.SetBytes(item, "level", level)
+		item, _ = sjson.SetBytes(item, "severity_number", severityNumber)
+		item, _ = sjson.SetBytes(item, "body", logs[i].Path)
 
-		item, _ = sjson.Set(item, "attributes.level", sentry_attribute.StringValue(level))
+		item, _ = sjson.SetRawBytes(item, "attributes.level", sentry_attribute.StringValue(level).RawJSON())
 
-		for key, value := range jsonBytesToSentryAttributes(logs[i].Log) {
-			item, _ = sjson.Set(item, fmt.Sprintf("attributes.%s", key), value)
-		}
+		item = applyJSONBytesAttributes(item, logs[i].Log)
 
 		for key, value := range logs[i].Metadata {
-			item, _ = sjson.Set(item, fmt.Sprintf("attributes._metadata__%s", key), sentry_attribute.StringValue(value))
+			item, _ = sjson.SetRawBytes(item, ("attributes._metadata__" + key), sentry_attribute.StringValue(value).RawJSON())
 		}
 
-		thirdLineData, _ = sjson.SetRaw(thirdLineData, fmt.Sprintf("items.%d", i), item)
+		items = append(items, item)
 	}
 
-	jsonObject.WriteString(thirdLineData)
-	jsonObject.WriteByte('\n')
+	thirdLineData, _ = sjson.SetRawBytes(thirdLineData, "items", reconstructor.RawJSONArray(items))
 
-	return jsonObject.Bytes(), nil
+	return reconstructor.RawJSONLines([][]byte{firstLineData, secondLineData, thirdLineData}), nil
 }
