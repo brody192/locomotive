@@ -11,21 +11,23 @@ import (
 	"github.com/brody192/locomotive/internal/logline/reconstructor/reconstruct_otel"
 	"github.com/brody192/locomotive/internal/logline/reconstructor/reconstruct_papertrail"
 	"github.com/brody192/locomotive/internal/logline/reconstructor/reconstruct_sentry"
+	"github.com/brody192/locomotive/internal/logline/reconstructor/reconstruct_victorialogs"
 )
 
 var schemeRegex = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9+.-]*://`)
 
 const (
-	WebhookModeJson        WebhookMode = "json"
-	WebhookModeJsonl       WebhookMode = "jsonl"
-	WebhookModePapertrail  WebhookMode = "papertrail"
-	WebhookModeDatadog     WebhookMode = "datadog"
-	WebhookModeAxiom       WebhookMode = "axiom"
-	WebhookModeBetterstack WebhookMode = "betterstack"
-	WebhookModeLoki        WebhookMode = "loki"
-	WebhookModeSentry      WebhookMode = "sentry"
-	WebhookModeOtelHTTP    WebhookMode = "otel_http"
-	WebhookModeSignoz      WebhookMode = "signoz"
+	WebhookModeJson         WebhookMode = "json"
+	WebhookModeJsonl        WebhookMode = "jsonl"
+	WebhookModePapertrail   WebhookMode = "papertrail"
+	WebhookModeDatadog      WebhookMode = "datadog"
+	WebhookModeAxiom        WebhookMode = "axiom"
+	WebhookModeBetterstack  WebhookMode = "betterstack"
+	WebhookModeLoki         WebhookMode = "loki"
+	WebhookModeSentry       WebhookMode = "sentry"
+	WebhookModeOtelHTTP     WebhookMode = "otel_http"
+	WebhookModeSignoz       WebhookMode = "signoz"
+	WebhookModeVictoriaLogs WebhookMode = "victorialogs"
 
 	DefaultWebhookMode = WebhookModeJson
 )
@@ -100,5 +102,13 @@ var WebhookModeToConfig = map[WebhookMode]WebhookConfig{
 		Headers:                         map[string]string{},
 		EnvironmentLogReconstructorFunc: reconstruct_otel.EnvironmentLogsOtel,
 		HTTPLogReconstructorFunc:        reconstruct_otel.HttpLogsOtel,
+	},
+	WebhookModeVictoriaLogs: {
+		ExpectedHostContains: []string{"victorialogs", "victoriametrics"},
+		Headers: map[string]string{
+			"Content-Type": "application/stream+json",
+		},
+		EnvironmentLogReconstructorFunc: reconstruct_victorialogs.EnvironmentLogsJsonLines,
+		HTTPLogReconstructorFunc:        reconstruct_victorialogs.HttpLogsJsonLines,
 	},
 }
