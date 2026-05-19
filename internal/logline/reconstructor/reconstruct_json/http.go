@@ -60,7 +60,12 @@ func httpLogLineJson(log http_logs.DeploymentHttpLogWithMetadata, config Config)
 		object, _ = sjson.SetBytes(object, fmt.Sprintf("_metadata.%s", key), value)
 	}
 
-	object, _ = sjson.SetBytes(object, "message", log.Path)
+	messageAttribute := config.MessageAttribute
+	if messageAttribute == "" {
+		messageAttribute = "message"
+	}
+
+	object, _ = sjson.SetBytes(object, messageAttribute, log.Path)
 
 	for _, attribute := range config.ReserverdAttributes {
 		attr := gjson.GetBytes(object, attribute)

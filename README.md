@@ -13,6 +13,7 @@ With tailored support for:
 - Sentry
 - Papertrail
 - SigNoz
+- VictoriaLogs
 - OpenTelemetry HTTP
 
 And more with the standard JSON and JSON Lines modes.
@@ -81,6 +82,7 @@ Configuration is done through environment variables. See explanation and example
     - Example for Axiom: `https://api.axiom.co/v1/datasets/{DATASET_NAME}/ingest`
     - Example for BetterStack: `https://in.logs.betterstack.com`
     - Example for SigNoz: `https://ingest.{REGION}.signoz.cloud:443/v1/logs`
+    - Example for VictoriaLogs: `https://{VICTORIALOGS_HOSTNAME}/insert/jsonline`
     - Example for OpenTelemetry HTTP: `https://{OTEL_HTTP_ENDPOINT}/v1/logs`
 
     See [Provider specific setup](#provider-specific-setup) for more information.
@@ -117,6 +119,7 @@ Configuration is done through environment variables. See explanation and example
     - `loki`
     - `sentry`
     - `signoz`
+    - `victorialogs`
     - `otel_http`
 
     </br>
@@ -247,6 +250,24 @@ Configuration is done through environment variables. See explanation and example
 - `LOCOMOTIVE_ADDITIONAL_HEADERS` - `signoz-ingestion-key={SIGNOZ_INGESTION_KEY}`
 
     The ingestion URL and key can be found in your SigNoz Cloud dashboard under 'Settings' > 'Ingestion Settings'. See the [SigNoz Cloud Ingestion docs](https://signoz.io/docs/ingestion/signoz-cloud/overview/) for more information.
+
+    </br>
+
+#### VictoriaLogs
+
+- `LOCOMOTIVE_WEBHOOK_MODE` - `victorialogs`
+
+- `LOCOMOTIVE_WEBHOOK_URL` - `https://{VICTORIALOGS_HOSTNAME}/insert/jsonline`
+
+    The hostname depends on where you are running VictoriaLogs. The endpoint accepts JSON-line ingestion at `/insert/jsonline`. See the [VictoriaLogs JSON ingestion docs](https://docs.victoriametrics.com/victorialogs/data-ingestion/#json-stream-api) for details.
+
+    Use the `_stream_fields` query parameter to declare which fields identify a log stream (e.g. service / environment), for example:
+
+    `https://{VICTORIALOGS_HOSTNAME}/insert/jsonline?_stream_fields=_metadata.service_name,_metadata.environment_name`
+
+    Or, with username and password authentication:
+
+    `https://{USERNAME}:{PASSWORD}@{VICTORIALOGS_HOSTNAME}/insert/jsonline`
 
     </br>
 

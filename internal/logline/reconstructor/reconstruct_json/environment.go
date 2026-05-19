@@ -62,7 +62,12 @@ func environmentLogJson(log environment_logs.EnvironmentLogWithMetadata, config 
 		object, _ = sjson.SetBytes(object, fmt.Sprintf("_metadata.%s", key), value)
 	}
 
-	object, _ = sjson.SetBytes(object, "message", util.StripAnsi(log.Log.Message))
+	messageAttribute := config.MessageAttribute
+	if messageAttribute == "" {
+		messageAttribute = "message"
+	}
+
+	object, _ = sjson.SetBytes(object, messageAttribute, util.StripAnsi(log.Log.Message))
 
 	object, _ = sjson.SetBytes(object, "severity", log.Log.Severity)
 
