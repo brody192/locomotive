@@ -5,6 +5,7 @@ import (
 
 	"github.com/brody192/locomotive/internal/logline/reconstructor"
 	"github.com/brody192/locomotive/internal/logline/reconstructor/reconstruct_sentry/sentry_attribute"
+	"github.com/brody192/locomotive/internal/railway/subscribe"
 	"github.com/brody192/locomotive/internal/railway/subscribe/http_logs"
 	"github.com/tidwall/sjson"
 )
@@ -42,6 +43,10 @@ func HttpLogsEnvelope(logs []http_logs.DeploymentHttpLogWithMetadata) ([]byte, e
 
 		for key, value := range logs[i].Metadata {
 			item, _ = sjson.SetRawBytes(item, ("attributes._metadata__" + key), sentry_attribute.StringValue(value).RawJSON())
+		}
+
+		if env := logs[i].Metadata[subscribe.MetadataKeyEnvironmentName]; env != "" {
+			item, _ = sjson.SetBytes(item, `attributes.sentry\.environment.value`, env)
 		}
 
 		items = append(items, item)
