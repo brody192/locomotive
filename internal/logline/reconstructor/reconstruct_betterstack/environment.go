@@ -10,9 +10,3 @@ func EnvironmentLogsJsonArray(logs []environment_logs.EnvironmentLogWithMetadata
 		TimestampAttribute: timestampAttribute,
 	})
 }
-
-func EnvironmentLogsJsonLines(logs []environment_logs.EnvironmentLogWithMetadata) ([]byte, error) {
-	return reconstruct_json.EnvironmentLogsJsonLinesWithConfig(logs, reconstruct_json.Config{
-		TimestampAttribute: timestampAttribute,
-	})
-}

@@ -32,25 +32,24 @@ func fetchEnvironmentWithRetry(ctx context.Context, g *railway.GraphQLClient, en
 	)
 }
 
-func findSuccessfulDeploymentsIdsForWantedServiceIds(environment *queries.EnvironmentData, wantedServiceIds []uuid.UUID) []DeploymentIdWithInfo {
-	successfulDeploymentsIdsForWantedServiceIds := []DeploymentIdWithInfo{}
+// findSuccessfulDeploymentsIdsForWantedServiceIds returns the IDs of every successful
+// deployment for the wanted services. All of them are tailed (not just the latest):
+// during a rollover the previous deployment is still draining requests and emitting
+// logs while the new one comes up, so tailing only the newest would drop those.
+func findSuccessfulDeploymentsIdsForWantedServiceIds(environment *queries.EnvironmentData, wantedServiceIds []uuid.UUID) []uuid.UUID {
+	deploymentIds := []uuid.UUID{}
 
 	for _, deployment := range environment.Environment.Deployments.Edges {
-		// Only consider successful deployments
 		if deployment.Node.Status != "SUCCESS" {
 			continue
 		}
 
-		// Only consider deployments for the specified trains
 		if !slices.Contains(wantedServiceIds, deployment.Node.ServiceID) {
 			continue
 		}
 
-		successfulDeploymentsIdsForWantedServiceIds = append(successfulDeploymentsIdsForWantedServiceIds, DeploymentIdWithInfo{
-			ID:        deployment.Node.ID,
-			CreatedAt: deployment.Node.CreatedAt,
-		})
+		deploymentIds = append(deploymentIds, deployment.Node.ID)
 	}
 
-	return successfulDeploymentsIdsForWantedServiceIds
+	return deploymentIds
 }

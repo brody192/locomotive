@@ -11,3 +11,15 @@ func containsAnyHost(hostname string, expectedHosts []string) bool {
 
 	return false
 }
+
+// headersContainFold reports whether headers has a key matching target, compared
+// case-insensitively.
+func headersContainFold(headers AdditionalHeaders, target string) bool {
+	for key := range headers {
+		if strings.EqualFold(key, target) {
+			return true
+		}
+	}
+
+	return false
+}

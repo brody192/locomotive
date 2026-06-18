@@ -8,7 +8,7 @@ import (
 func EnvironmentLogsJsonArray(logs []environment_logs.EnvironmentLogWithMetadata) ([]byte, error) {
 	return reconstruct_json.EnvironmentLogsJsonArrayWithConfig(logs, reconstruct_json.Config{
 		TimestampAttribute:   timestampAttribute,
-		ReserverdAttributes:  reservedAttributes,
+		ReservedAttributes:   reservedAttributes,
 		AdditionalFieldsFunc: additionalFields,
 	})
 }

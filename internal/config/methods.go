@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 )
 
@@ -36,12 +38,7 @@ func (h *AdditionalHeaders) UnmarshalText(envByte []byte) error {
 	return nil
 }
 
+// Keys returns the header names in sorted order (so logging is deterministic).
 func (h *AdditionalHeaders) Keys() []string {
-	keys := make([]string, 0, len(*h))
-
-	for key := range *h {
-		keys = append(keys, key)
-	}
-
-	return keys
+	return slices.Sorted(maps.Keys(*h))
 }

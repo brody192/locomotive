@@ -8,5 +8,5 @@ import (
 )
 
 func SendPayload(ctx context.Context, payload []byte) error {
-	return generic.SendRawWebhook(ctx, payload, config.Global.WebhookUrl, config.Global.AdditionalHeaders, client)
+	return generic.SendRawWebhook(ctx, payload, config.Global.WebhookUrl, config.WebhookModeToConfig[config.Global.WebhookMode].DefaultHeaders, config.Global.AdditionalHeaders, client)
 }

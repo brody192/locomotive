@@ -76,7 +76,6 @@ func SubscribeToServiceLogs(ctx context.Context, g *railway.GraphQLClient, logTr
 
 			// on first subscription skip logs if they were logged before the first subscription, on resubscription skip logs if they were already processed
 			if !logs.Payload.Data.EnvironmentLogs[i].Timestamp.After(LogTime) {
-				// logger.Stdout.Debug("skipping stale log message")
 				continue
 			}
 

@@ -14,9 +14,14 @@ func ErrAttr(err error) slog.Attr {
 }
 
 func ErrorsAttr(errors ...error) slog.Attr {
-	stringErrors := []string{}
+	stringErrors := make([]string, 0, len(errors))
 
 	for _, err := range errors {
+		if err == nil {
+			stringErrors = append(stringErrors, "<nil>")
+			continue
+		}
+
 		stringErrors = append(stringErrors, strings.TrimSpace(err.Error()))
 	}
 

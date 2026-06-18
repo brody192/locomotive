@@ -2,12 +2,11 @@ package slice
 
 import (
 	"slices"
-
-	mutex "sync"
+	"sync"
 )
 
 type Sync[T comparable] struct {
-	mu    mutex.RWMutex
+	mu    sync.RWMutex
 	items []T
 }
 
@@ -52,18 +51,4 @@ func (s *Sync[T]) Delete(item T) {
 	s.items = slices.DeleteFunc(s.items, func(sliceItem T) bool {
 		return sliceItem == item
 	})
-}
-
-func (s *Sync[T]) Length() int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	return len(s.items)
-}
-
-func (s *Sync[T]) Clear() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.items = []T{}
 }

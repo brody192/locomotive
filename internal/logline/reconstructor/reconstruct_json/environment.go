@@ -75,7 +75,7 @@ func environmentLogJson(log environment_logs.EnvironmentLogWithMetadata, config 
 		key := log.Log.Attributes[i].Key
 
 		// if the attribute is a reserved attribute, add an underscore to the beginning of the key
-		if slices.Contains(config.ReserverdAttributes, key) {
+		if slices.Contains(config.ReservedAttributes, key) {
 			key = fmt.Sprintf("_%s", key)
 		}
 

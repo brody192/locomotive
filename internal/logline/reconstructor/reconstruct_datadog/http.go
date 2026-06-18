@@ -8,7 +8,7 @@ import (
 func HttpLogsJsonArray(logs []http_logs.DeploymentHttpLogWithMetadata) ([]byte, error) {
 	return reconstruct_json.HttpLogsJsonArrayWithConfig(logs, reconstruct_json.Config{
 		TimestampAttribute:   timestampAttribute,
-		ReserverdAttributes:  reservedAttributes,
+		ReservedAttributes:   reservedAttributes,
 		AdditionalFieldsFunc: additionalFields,
 	})
 }
