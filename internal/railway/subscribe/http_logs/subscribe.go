@@ -17,25 +17,26 @@ import (
 	"github.com/flexstack/uuid"
 )
 
-func createHttpLogSubscription(ctx context.Context, g *railway.GraphQLClient, deploymentId uuid.UUID) (*subscribe.Conn, error) {
-	payload := &subscriptions.HttpLogsSubscriptionPayload{
+// httpLogsInitialBacklog is the lower time bound used for the very first subscription
+// of a deployment, to pick up logs emitted shortly before locomotive connected.
+const httpLogsInitialBacklog = 24 * time.Hour
+
+// httpLogsPayload builds the subscription payload. beforeDate is the exclusive lower
+// time bound: the backend streams logs with timestamp > beforeDate. On resubscribe we
+// pass the last-seen log timestamp so the backend only returns what's new, instead of
+// re-scanning (and re-sending) the whole backlog window every time.
+func httpLogsPayload(deploymentId uuid.UUID, beforeDate time.Time) *subscriptions.HttpLogsSubscriptionPayload {
+	return &subscriptions.HttpLogsSubscriptionPayload{
 		Query: subscriptions.HttpLogsSubscription,
 		Variables: &subscriptions.HttpLogsSubscriptionVariables{
-			BeforeDate:   time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339Nano),
+			BeforeDate:   beforeDate.UTC().Format(time.RFC3339Nano),
 			BeforeLimit:  500,
 			DeploymentId: deploymentId,
 			Filter:       "",
 		},
 	}
-
-	return g.CreateWebSocketSubscription(ctx, payload)
 }
 
-func resubscribeHttpLogsWithRetry(ctx context.Context, g *railway.GraphQLClient, deploymentId uuid.UUID, conn *subscribe.Conn) (*subscribe.Conn, error) {
-	return subscribe.ResubscribeWithRetry(ctx, conn, (3600 * time.Second), func(ctx context.Context) (*subscribe.Conn, error) {
-		return createHttpLogSubscription(ctx, g, deploymentId)
-	}, slog.String("deployment_id", deploymentId.String()))
-}
 
 func SubscribeToHttpLogs(ctx context.Context, g *railway.GraphQLClient, logTrack chan<- []DeploymentHttpLogWithMetadata, environmentId uuid.UUID, serviceIds []uuid.UUID) error {
 	deploymentIdSlice := slice.NewSync[deployment_changes.DeploymentIdWithInfo]()
@@ -142,19 +143,24 @@ func SubscribeToHttpLogs(ctx context.Context, g *railway.GraphQLClient, logTrack
 }
 
 func getHttpLogs(ctx context.Context, g *railway.GraphQLClient, initialDeployment deployment_changes.DeploymentIdWithInfo, logTrack chan<- []DeploymentHttpLogWithMetadata, activeDeployments *slice.Sync[deployment_changes.DeploymentIdWithInfo]) error {
-	conn, err := createHttpLogSubscription(ctx, g, initialDeployment.ID)
-	if err != nil {
-		return fmt.Errorf("failed to create subscription for deployment %s: %w", initialDeployment.ID, err)
-	}
-
-	defer func() { conn.CloseNow() }()
-
 	initTime, ok := ctx.Value(funcInitTimeKey).(time.Time)
 	if !ok {
 		return fmt.Errorf("missing or invalid init time in context for deployment %s", initialDeployment.ID)
 	}
 
-	logTimes := initialDeployment.CreatedAt
+	// logTimes is our cursor into the log stream: it starts at the backlog horizon and
+	// advances to the last log we forward, so the payload provider always asks for logs
+	// after what we've already seen — on the first connect and every resubscribe alike.
+	logTimes := time.Now().Add(-httpLogsInitialBacklog)
+
+	sub, err := subscribe.NewSubscription(ctx, g.CreateWebSocketSubscription, func() any {
+		return httpLogsPayload(initialDeployment.ID, logTimes)
+	}, (3600 * time.Second))
+	if err != nil {
+		return fmt.Errorf("failed to create subscription for deployment %s: %w", initialDeployment.ID, err)
+	}
+
+	defer func() { sub.Close() }()
 
 	logger.Stdout.Debug("successfully created HTTP log subscription", slog.String("deployment_id", initialDeployment.ID.String()))
 
@@ -180,7 +186,7 @@ func getHttpLogs(ctx context.Context, g *railway.GraphQLClient, initialDeploymen
 				return nil
 			}
 
-			_, logPayload, err := conn.Read(ctx)
+			_, logPayload, err := sub.Read(ctx)
 			if err != nil {
 				if errors.Is(err, context.DeadlineExceeded) {
 					// No data available, continue
@@ -200,13 +206,10 @@ func getHttpLogs(ctx context.Context, g *railway.GraphQLClient, initialDeploymen
 					logger.ErrAttr(err),
 				)
 
-				// Close old connection and create new one
-				newConn, err := resubscribeHttpLogsWithRetry(ctx, g, initialDeployment.ID, conn)
-				if err != nil {
+				// Connection broken: redial, resuming from the last log we saw.
+				if err := sub.Redial(ctx); err != nil {
 					return fmt.Errorf("failed to resubscribe for deployment %s: %w", initialDeployment.ID, err)
 				}
-
-				conn = newConn
 
 				continue
 			}
@@ -223,14 +226,15 @@ func getHttpLogs(ctx context.Context, g *railway.GraphQLClient, initialDeploymen
 			}
 
 			if logs.Type != subscriptions.SubscriptionTypeNext {
-				logger.Stdout.Debug("unexpected log type, resubscribing",
+				logger.Stdout.Debug("subscription ended, resubscribing over existing connection",
 					slog.String("deployment_id", initialDeployment.ID.String()),
 					slog.String("type", string(logs.Type)),
 				)
 
-				// Close old connection and create new one
-				newConn, err := resubscribeHttpLogsWithRetry(ctx, g, initialDeployment.ID, conn)
-				if err != nil {
+				// Subscription completed but the socket is still alive: reuse it by
+				// sending a fresh subscribe message instead of redialing, resuming
+				// from the last log we saw.
+				if err := sub.Reuse(ctx); err != nil {
 					logger.Stdout.Error("failed to resubscribe",
 						slog.String("deployment_id", initialDeployment.ID.String()),
 						logger.ErrAttr(err),
@@ -238,8 +242,6 @@ func getHttpLogs(ctx context.Context, g *railway.GraphQLClient, initialDeploymen
 
 					return err
 				}
-
-				conn = newConn
 
 				continue
 			}

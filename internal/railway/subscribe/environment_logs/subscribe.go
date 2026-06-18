@@ -15,26 +15,21 @@ import (
 	"github.com/flexstack/uuid"
 )
 
-func createEnvironmentLogSubscription(ctx context.Context, client *railway.GraphQLClient, environmentId uuid.UUID, serviceIds []uuid.UUID) (*subscribe.Conn, error) {
-	payload := &subscriptions.EnvironmentLogsSubscriptionPayload{
+// environmentLogsPayload builds the subscription payload. beforeDate is the exclusive
+// lower time bound: the backend streams logs with timestamp > beforeDate. We pass our
+// cursor (connect time, then the last-seen log timestamp) so the backend only returns
+// what's new, instead of re-scanning (and re-sending) a backlog window every time.
+func environmentLogsPayload(environmentId uuid.UUID, serviceIds []uuid.UUID, beforeDate time.Time) *subscriptions.EnvironmentLogsSubscriptionPayload {
+	return &subscriptions.EnvironmentLogsSubscriptionPayload{
 		Query: subscriptions.EnvironmentLogsSubscription,
 		Variables: &subscriptions.EnvironmentLogsSubscriptionVariables{
 			EnvironmentId: environmentId,
 			Filter:        buildServiceFilter(serviceIds),
 
-			// needed for seamless subscription resuming
-			BeforeDate:  time.Now().UTC().Add(-5 * time.Minute).Format(time.RFC3339Nano),
+			BeforeDate:  beforeDate.UTC().Format(time.RFC3339Nano),
 			BeforeLimit: 500,
 		},
 	}
-
-	return client.CreateWebSocketSubscription(ctx, payload)
-}
-
-func resubscribeServiceLogsWithRetry(ctx context.Context, client *railway.GraphQLClient, environmentId uuid.UUID, serviceIds []uuid.UUID, conn *subscribe.Conn) (*subscribe.Conn, error) {
-	return subscribe.ResubscribeWithRetry(ctx, conn, (3600 * time.Second), func(ctx context.Context) (*subscribe.Conn, error) {
-		return createEnvironmentLogSubscription(ctx, client, environmentId, serviceIds)
-	})
 }
 
 func SubscribeToServiceLogs(ctx context.Context, g *railway.GraphQLClient, logTrack chan<- []EnvironmentLogWithMetadata, environmentId uuid.UUID, serviceIds []uuid.UUID) error {
@@ -43,24 +38,30 @@ func SubscribeToServiceLogs(ctx context.Context, g *railway.GraphQLClient, logTr
 		return fmt.Errorf("error getting metadata map: %w", err)
 	}
 
-	conn, err := createEnvironmentLogSubscription(ctx, g, environmentId, serviceIds)
+	// LogTime is our cursor into the log stream: it starts at connect time (we only
+	// forward logs from startup onward) and advances to the last log we forward, so the
+	// payload provider always asks for logs after what we've already seen — on the first
+	// connect and every resubscribe alike.
+	LogTime := time.Now().UTC()
+
+	sub, err := subscribe.NewSubscription(ctx, g.CreateWebSocketSubscription, func() any {
+		return environmentLogsPayload(environmentId, serviceIds, LogTime)
+	}, (3600 * time.Second))
 	if err != nil {
 		return err
 	}
 
-	defer func() { conn.CloseNow() }()
-
-	LogTime := time.Now().UTC()
+	defer func() { sub.Close() }()
 
 	for {
-		_, logPayload, err := conn.Read(ctx)
+		_, logPayload, err := sub.Read(ctx)
 		if err != nil {
 			logger.Stdout.Debug("resubscribing",
 				logger.ErrAttr(err),
 			)
 
-			conn, err = resubscribeServiceLogsWithRetry(ctx, g, environmentId, serviceIds, conn)
-			if err != nil {
+			// Connection broken: redial, resuming from the last log we saw.
+			if err := sub.Redial(ctx); err != nil {
 				return err
 			}
 
@@ -74,12 +75,13 @@ func SubscribeToServiceLogs(ctx context.Context, g *railway.GraphQLClient, logTr
 		}
 
 		if logs.Type != subscriptions.SubscriptionTypeNext {
-			logger.Stdout.Debug("resubscribing",
+			logger.Stdout.Debug("subscription ended, resubscribing over existing connection",
 				slog.String("reason", fmt.Sprintf("log type not next: %s", logs.Type)),
 			)
 
-			conn, err = resubscribeServiceLogsWithRetry(ctx, g, environmentId, serviceIds, conn)
-			if err != nil {
+			// Subscription completed but the socket is still alive: reuse it,
+			// resuming from the last log we saw.
+			if err := sub.Reuse(ctx); err != nil {
 				return err
 			}
 
