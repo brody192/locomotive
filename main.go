@@ -77,7 +77,7 @@ func run() int {
 			return nil
 		}
 
-		return runLogPipeline(ctx, "deploy-logs", serializer.DeployLogs,
+		return runLogPipeline(ctx, pipelineDeployLogs, serializer.DeployLogs,
 			func(ctx context.Context, track chan []environment_logs.EnvironmentLogWithMetadata) error {
 				return environment_logs.SubscribeToServiceLogs(ctx, gqlClient, track, config.Global.EnvironmentId, config.Global.ServiceIds)
 			}, &deployLogsProcessed)
@@ -89,7 +89,7 @@ func run() int {
 			return nil
 		}
 
-		return runLogPipeline(ctx, "http-logs", serializer.HttpLogs,
+		return runLogPipeline(ctx, pipelineHTTPLogs, serializer.HttpLogs,
 			func(ctx context.Context, track chan []http_logs.DeploymentHttpLogWithMetadata) error {
 				return http_logs.SubscribeToHttpLogs(ctx, gqlClient, track, config.Global.EnvironmentId, config.Global.ServiceIds)
 			}, &httpLogsProcessed)

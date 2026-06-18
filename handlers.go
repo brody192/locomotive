@@ -12,6 +12,12 @@ import (
 	"github.com/brody192/locomotive/internal/webhook"
 )
 
+// Pipeline names, used to label each pipeline's dispatcher, subscription retries, and logs.
+const (
+	pipelineDeployLogs = "deploy-logs"
+	pipelineHTTPLogs   = "http-logs"
+)
+
 type webhookPayload struct {
 	data     []byte
 	logCount int
