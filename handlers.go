@@ -18,6 +18,12 @@ const (
 	pipelineHTTPLogs   = "http-logs"
 )
 
+// Suffixes appended to a pipeline name to label its two sub-components.
+const (
+	dispatcherNameSuffix   = "-webhook"
+	subscriptionNameSuffix = "-subscription"
+)
+
 type webhookPayload struct {
 	data     []byte
 	logCount int
@@ -31,7 +37,7 @@ func runLogPipeline[T any](
 	processed *atomic.Int64,
 ) error {
 	dispatcher, err := queue.NewDispatcher(
-		queue.Name((name + "-webhook")),
+		queue.Name((name + dispatcherNameSuffix)),
 		queue.MaxQueueSize(1000),
 		queue.MaxRetries(5),
 		queue.InitialBackoff((500 * time.Millisecond)),
@@ -80,7 +86,7 @@ func runLogPipeline[T any](
 
 	if err := queue.RetryConstant(
 		pipeCtx,
-		queue.Name((name + "-subscription")),
+		queue.Name((name + subscriptionNameSuffix)),
 		queue.MaxRetries(10),
 		queue.RetryInterval((1 * time.Second)),
 		func(ctx context.Context) error {
