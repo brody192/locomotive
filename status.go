@@ -37,15 +37,11 @@ func reportStatusAsync(ctx context.Context, deployLogs *logCounts, httpLogs *log
 
 			dl := deployLogs.processed.Load()
 			hl := httpLogs.processed.Load()
-			df := deployLogs.failed.Load()
-			hf := httpLogs.failed.Load()
 
-			if dl > 0 || hl > 0 || df > 0 || hf > 0 {
+			if dl > 0 || hl > 0 {
 				logger.Stdout.Info("The locomotive is chugging along...",
 					slog.Int64("deploy_logs_processed", dl),
-					slog.Int64("deploy_logs_failed", df),
 					slog.Int64("http_logs_processed", hl),
-					slog.Int64("http_logs_failed", hf),
 				)
 
 				prevDeployLogs.Store(dl)
@@ -70,25 +66,26 @@ func reportStatusAsync(ctx context.Context, deployLogs *logCounts, httpLogs *log
 
 			dl := deployLogs.processed.Load()
 			hl := httpLogs.processed.Load()
-			df := deployLogs.failed.Load()
-			hf := httpLogs.failed.Load()
 
-			if dl == 0 && hl == 0 && df == 0 && hf == 0 {
+			if dl == 0 && hl == 0 {
 				continue
 			}
 
 			statusLog := logger.Stdout.With(
 				slog.Int64("deploy_logs_processed", dl),
-				slog.Int64("deploy_logs_failed", df),
 				slog.Int64("http_logs_processed", hl),
-				slog.Int64("http_logs_failed", hf),
 			)
 
+			// Failure counts and mem stats are debug-only: a creeping "failed" number on
+			// the normal status line tends to alarm people, and real failures already
+			// surface via the dispatcher's own warn/error logs.
 			if logger.Stdout.Enabled(context.Background(), slog.LevelDebug) {
 				memStats := &runtime.MemStats{}
 				runtime.ReadMemStats(memStats)
 
 				statusLog = statusLog.With(
+					slog.Int64("deploy_logs_failed", deployLogs.failed.Load()),
+					slog.Int64("http_logs_failed", httpLogs.failed.Load()),
 					slog.String("total_alloc", util.ByteCountIEC(memStats.TotalAlloc)),
 					slog.String("heap_alloc", util.ByteCountIEC(memStats.HeapAlloc)),
 					slog.String("heap_in_use", util.ByteCountIEC(memStats.HeapInuse)),
@@ -98,8 +95,6 @@ func reportStatusAsync(ctx context.Context, deployLogs *logCounts, httpLogs *log
 				)
 			}
 
-			// "chugging" vs "waiting" is keyed on shipped logs; failures are still
-			// reported above but don't count as forward progress.
 			if dl == prevDeployLogs.Load() && hl == prevHttpLogs.Load() {
 				statusLog.Info("The locomotive is waiting for cargo...")
 			} else {
