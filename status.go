@@ -12,7 +12,15 @@ import (
 	"github.com/brody192/locomotive/internal/util"
 )
 
-func reportStatusAsync(ctx context.Context, deployLogsProcessed *atomic.Int64, httpLogsProcessed *atomic.Int64) {
+// logCounts tracks a pipeline's outcomes: entries successfully shipped, and entries
+// received from Railway but never shipped (serialize failures or dispatcher drops).
+// Always pass by pointer — atomic.Int64 must not be copied.
+type logCounts struct {
+	processed atomic.Int64
+	failed    atomic.Int64
+}
+
+func reportStatusAsync(ctx context.Context, deployLogs *logCounts, httpLogs *logCounts) {
 	var prevDeployLogs, prevHttpLogs atomic.Int64
 
 	go func() {
@@ -27,13 +35,17 @@ func reportStatusAsync(ctx context.Context, deployLogsProcessed *atomic.Int64, h
 			case <-t.C:
 			}
 
-			dl := deployLogsProcessed.Load()
-			hl := httpLogsProcessed.Load()
+			dl := deployLogs.processed.Load()
+			hl := httpLogs.processed.Load()
+			df := deployLogs.failed.Load()
+			hf := httpLogs.failed.Load()
 
-			if dl > 0 || hl > 0 {
+			if dl > 0 || hl > 0 || df > 0 || hf > 0 {
 				logger.Stdout.Info("The locomotive is chugging along...",
 					slog.Int64("deploy_logs_processed", dl),
+					slog.Int64("deploy_logs_failed", df),
 					slog.Int64("http_logs_processed", hl),
+					slog.Int64("http_logs_failed", hf),
 				)
 
 				prevDeployLogs.Store(dl)
@@ -56,16 +68,20 @@ func reportStatusAsync(ctx context.Context, deployLogsProcessed *atomic.Int64, h
 			case <-t.C:
 			}
 
-			dl := deployLogsProcessed.Load()
-			hl := httpLogsProcessed.Load()
+			dl := deployLogs.processed.Load()
+			hl := httpLogs.processed.Load()
+			df := deployLogs.failed.Load()
+			hf := httpLogs.failed.Load()
 
-			if dl == 0 && hl == 0 {
+			if dl == 0 && hl == 0 && df == 0 && hf == 0 {
 				continue
 			}
 
 			statusLog := logger.Stdout.With(
 				slog.Int64("deploy_logs_processed", dl),
+				slog.Int64("deploy_logs_failed", df),
 				slog.Int64("http_logs_processed", hl),
+				slog.Int64("http_logs_failed", hf),
 			)
 
 			if logger.Stdout.Enabled(context.Background(), slog.LevelDebug) {
@@ -82,6 +98,8 @@ func reportStatusAsync(ctx context.Context, deployLogsProcessed *atomic.Int64, h
 				)
 			}
 
+			// "chugging" vs "waiting" is keyed on shipped logs; failures are still
+			// reported above but don't count as forward progress.
 			if dl == prevDeployLogs.Load() && hl == prevHttpLogs.Load() {
 				statusLog.Info("The locomotive is waiting for cargo...")
 			} else {
