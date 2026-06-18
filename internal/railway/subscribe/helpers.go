@@ -2,6 +2,7 @@ package subscribe
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
@@ -296,4 +297,54 @@ func (s *Subscription) Redial(ctx context.Context) error {
 
 func (s *Subscription) redial(ctx context.Context) (*Conn, error) {
 	return s.dial(ctx, s.payload())
+}
+
+// Run reads messages until ctx is cancelled, driving the (re)subscribe policy shared by
+// every subscription:
+//   - a connection error → redial (the socket is broken)
+//   - a non-"next" message, e.g. "complete" → reuse the socket (resubscribe over it)
+//   - a malformed message → log and skip (one bad frame shouldn't kill the stream)
+//   - a "next" message → hand the raw payload to onNext
+//
+// onNext returning an error stops Run and returns that error; returning nil continues.
+func (s *Subscription) Run(ctx context.Context, onNext func(payload []byte) error) error {
+	for {
+		_, payload, err := s.Read(ctx)
+		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+
+			logger.Stdout.Debug("connection error, resubscribing", logger.ErrAttr(err))
+
+			if err := s.Redial(ctx); err != nil {
+				return err
+			}
+
+			continue
+		}
+
+		var envelope struct {
+			Type subscriptions.SubscriptionType `json:"type"`
+		}
+		if err := json.Unmarshal(payload, &envelope); err != nil {
+			logger.Stdout.Debug("could not parse subscription message, skipping", logger.ErrAttr(err))
+			continue
+		}
+
+		if envelope.Type != subscriptions.SubscriptionTypeNext {
+			logger.Stdout.Debug("subscription ended, resubscribing over existing connection",
+				slog.String("type", string(envelope.Type)))
+
+			if err := s.Reuse(ctx); err != nil {
+				return err
+			}
+
+			continue
+		}
+
+		if err := onNext(payload); err != nil {
+			return err
+		}
+	}
 }

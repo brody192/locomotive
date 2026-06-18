@@ -3,7 +3,6 @@ package environment_invalidation
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"github.com/brody192/locomotive/internal/logger"
@@ -34,57 +33,33 @@ func SubscribeToInvalidationRequests(ctx context.Context, g *railway.GraphQLClie
 
 	lastHash := ""
 
-	for {
-		_, payload, err := sub.Read(ctx)
-		if err != nil {
-			logger.Stdout.Debug("resubscribing",
-				logger.ErrAttr(err),
-			)
-
-			// Connection broken: redial.
-			if err := sub.Redial(ctx); err != nil {
-				return err
-			}
-
-			continue
-		}
-
+	return sub.Run(ctx, func(payload []byte) error {
 		invalidationRequest := &subscriptions.CanvasInvalidationData{}
-
 		if err := json.Unmarshal(payload, &invalidationRequest); err != nil {
-			return fmt.Errorf("error unmarshalling invalidation request: %w", err)
+			logger.Stdout.Error("failed to unmarshal invalidation request", logger.ErrAttr(err))
+			return nil
 		}
 
-		if invalidationRequest.Type != subscriptions.SubscriptionTypeNext {
-			logger.Stdout.Debug("subscription ended, resubscribing over existing connection",
-				logger.ErrAttr(fmt.Errorf("log type not next: %s", invalidationRequest.Type)),
-			)
+		id := invalidationRequest.Payload.Data.CanvasInvalidation.ID
 
-			// Subscription completed but the socket is still alive: reuse it.
-			if err := sub.Reuse(ctx); err != nil {
-				return err
-			}
-
-			continue
-		}
-
+		// First message just seeds the baseline; only forward subsequent changes.
 		if lastHash == "" {
-			// logger.Stdout.Debug("skipping because last hash is empty", slog.String("id", invalidationRequest.Payload.Data.CanvasInvalidation.ID))
-			lastHash = invalidationRequest.Payload.Data.CanvasInvalidation.ID
-			continue
+			lastHash = id
+			return nil
 		}
 
-		if invalidationRequest.Payload.Data.CanvasInvalidation.ID == lastHash {
-			// logger.Stdout.Debug("skipping because last hash is the same", slog.String("id", invalidationRequest.Payload.Data.CanvasInvalidation.ID))
-			continue
+		if id == lastHash {
+			return nil
 		}
 
-		lastHash = invalidationRequest.Payload.Data.CanvasInvalidation.ID
+		lastHash = id
 
 		select {
-		case environmentHashTrack <- invalidationRequest.Payload.Data.CanvasInvalidation.ID:
+		case environmentHashTrack <- id:
 		case <-ctx.Done():
 			return ctx.Err()
 		}
-	}
+
+		return nil
+	})
 }

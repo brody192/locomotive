@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"strings"
 	"time"
 
@@ -53,39 +52,11 @@ func SubscribeToServiceLogs(ctx context.Context, g *railway.GraphQLClient, logTr
 
 	defer func() { sub.Close() }()
 
-	for {
-		_, logPayload, err := sub.Read(ctx)
-		if err != nil {
-			logger.Stdout.Debug("resubscribing",
-				logger.ErrAttr(err),
-			)
-
-			// Connection broken: redial, resuming from the last log we saw.
-			if err := sub.Redial(ctx); err != nil {
-				return err
-			}
-
-			continue
-		}
-
+	return sub.Run(ctx, func(payload []byte) error {
 		logs := &subscriptions.EnvironmentLogsData{}
-
-		if err := json.Unmarshal(logPayload, &logs); err != nil {
-			return fmt.Errorf("error unmarshalling service logs: %w", err)
-		}
-
-		if logs.Type != subscriptions.SubscriptionTypeNext {
-			logger.Stdout.Debug("subscription ended, resubscribing over existing connection",
-				slog.String("reason", fmt.Sprintf("log type not next: %s", logs.Type)),
-			)
-
-			// Subscription completed but the socket is still alive: reuse it,
-			// resuming from the last log we saw.
-			if err := sub.Reuse(ctx); err != nil {
-				return err
-			}
-
-			continue
+		if err := json.Unmarshal(payload, &logs); err != nil {
+			logger.Stdout.Error("failed to unmarshal service logs", logger.ErrAttr(err))
+			return nil
 		}
 
 		filteredLogs := make([]EnvironmentLogWithMetadata, 0, len(logs.Payload.Data.EnvironmentLogs))
@@ -136,7 +107,7 @@ func SubscribeToServiceLogs(ctx context.Context, g *railway.GraphQLClient, logTr
 		}
 
 		if len(filteredLogs) == 0 {
-			continue
+			return nil
 		}
 
 		select {
@@ -144,5 +115,7 @@ func SubscribeToServiceLogs(ctx context.Context, g *railway.GraphQLClient, logTr
 		case <-ctx.Done():
 			return ctx.Err()
 		}
-	}
+
+		return nil
+	})
 }
