@@ -59,6 +59,11 @@ const (
 	LogTypeEnvironmentInvalidation LogType = "environment_invalidation"
 )
 
+// logAttrSubscription is the structured-log attribute key carrying a subscription's
+// LogType, so every line for a subscription — stream events and retries alike — is tagged
+// the same way with the same value.
+const logAttrSubscription = "subscription"
+
 // subscriptionOpenLimiter is a global counting semaphore that bounds how many
 // subscriptions may be initializing at once across every subscription type.
 var subscriptionOpenLimiter = make(chan struct{}, maxConcurrentSubscriptionOpens)
@@ -236,11 +241,13 @@ func (s *Subscription) connect(ctx context.Context) error {
 	if s.conn.reusable() {
 		err := s.conn.Subscribe(ctx, s.payload())
 		if err == nil {
+			logger.Stdout.Debug("resubscribed over existing connection",
+				slog.String(logAttrSubscription, string(s.logType)))
 			return nil
 		}
 
 		logger.Stdout.LogAttrs(ctx, slog.LevelDebug, "could not reuse connection, falling back to redial",
-			slog.String("subscription", string(s.logType)),
+			slog.String(logAttrSubscription, string(s.logType)),
 			logger.ErrAttr(err))
 	}
 
@@ -257,7 +264,7 @@ func (s *Subscription) connect(ctx context.Context) error {
 		// cancellation is a normal shutdown, not an error.
 		if ctx.Err() == nil {
 			logger.Stdout.LogAttrs(ctx, slog.LevelError, "failed to establish subscription connection",
-				slog.String("subscription", string(s.logType)),
+				slog.String(logAttrSubscription, string(s.logType)),
 				logger.ErrAttr(err))
 		}
 
@@ -265,6 +272,10 @@ func (s *Subscription) connect(ctx context.Context) error {
 	}
 
 	s.conn = conn
+
+	logger.Stdout.Debug("established new connection",
+		slog.String(logAttrSubscription, string(s.logType)))
+
 	return nil
 }
 
@@ -284,7 +295,7 @@ func (s *Subscription) consume(ctx context.Context, onNext func(payload []byte) 
 			}
 
 			logger.Stdout.Debug("connection error, stream ended",
-				slog.String("subscription", string(s.logType)),
+				slog.String(logAttrSubscription, string(s.logType)),
 				logger.ErrAttr(readErr))
 
 			return delivered, nil
@@ -295,14 +306,14 @@ func (s *Subscription) consume(ctx context.Context, onNext func(payload []byte) 
 		}
 		if err := json.Unmarshal(payload, &envelope); err != nil {
 			logger.Stdout.Debug("could not parse subscription message, skipping",
-				slog.String("subscription", string(s.logType)),
+				slog.String(logAttrSubscription, string(s.logType)),
 				logger.ErrAttr(err))
 			continue
 		}
 
 		if envelope.Type != subscriptions.SubscriptionTypeNext {
 			logger.Stdout.Debug("subscription ended",
-				slog.String("subscription", string(s.logType)),
+				slog.String(logAttrSubscription, string(s.logType)),
 				slog.String("type", string(envelope.Type)))
 
 			return delivered, nil
@@ -330,7 +341,7 @@ func (s *Subscription) consume(ctx context.Context, onNext func(payload []byte) 
 func (s *Subscription) Run(ctx context.Context, onNext func(payload []byte) error) error {
 	for {
 		err := queue.RetryBackoff(ctx,
-			queue.Name("resubscribe-"+string(s.logType)),
+			queue.Name(string(s.logType)),
 			queue.MaxRetries(-1), // retry until ctx is cancelled or onNext fails
 			queue.InitialBackoff(resubscribeInitialBackoff),
 			queue.MaxBackoff(resubscribeMaxBackoff),
