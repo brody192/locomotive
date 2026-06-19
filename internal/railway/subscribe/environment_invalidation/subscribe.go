@@ -22,7 +22,7 @@ func invalidationRequestPayload(environmentId uuid.UUID) *subscriptions.CanvasIn
 }
 
 func SubscribeToInvalidationRequests(ctx context.Context, g *railway.GraphQLClient, environmentHashTrack chan<- string, environmentId uuid.UUID) error {
-	sub, err := subscribe.NewSubscription(ctx, subscribe.LogTypeEnvironmentInvalidation, g.CreateWebSocketSubscription, func() any {
+	sub, err := subscribe.NewSubscription(ctx, g.CreateWebSocketSubscription, func() any {
 		return invalidationRequestPayload(environmentId)
 	}, (3600 * time.Second))
 	if err != nil {

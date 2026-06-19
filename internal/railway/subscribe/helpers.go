@@ -38,16 +38,10 @@ const (
 	MetadataKeyServiceID            = "service_id"
 	MetadataKeyDeploymentID         = "deployment_id"
 	MetadataKeyDeploymentInstanceID = "deployment_instance_id"
-)
 
-// LogType identifies a subscription's log stream — used both as the metadata log_type
-// value and to label a Subscription in its logs.
-type LogType string
-
-const (
-	LogTypeEnvironment             LogType = "environment"
-	LogTypeHTTP                    LogType = "http"
-	LogTypeEnvironmentInvalidation LogType = "environment_invalidation"
+	LogTypeEnvironment             = "environment"
+	LogTypeHTTP                    = "http"
+	LogTypeEnvironmentInvalidation = "environment_invalidation"
 )
 
 // subscriptionOpenLimiter is a global counting semaphore that bounds how many
@@ -243,7 +237,6 @@ func resubscribeReusing(ctx context.Context, conn *Conn, maxRetryDuration time.D
 // payload is called fresh on every (re)subscribe, so a caller that tails forward simply
 // closes over its last-seen position instead of threading it through every call.
 type Subscription struct {
-	logType          LogType
 	conn             *Conn
 	dial             func(ctx context.Context, payload any) (*Conn, error)
 	payload          func() any
@@ -251,18 +244,17 @@ type Subscription struct {
 }
 
 // NewSubscription opens the initial connection and returns a Subscription that can
-// re-establish it. logType labels the subscription in its resubscribe logs. dial opens a
-// fresh socket (a bound CreateWebSocketSubscription), and payload returns the message to
-// (re)subscribe with, evaluated at the moment of each (re)subscribe — including this
-// initial one — so the caller never builds a payload at the call site.
-func NewSubscription(ctx context.Context, logType LogType, dial func(ctx context.Context, payload any) (*Conn, error), payload func() any, maxRetryDuration time.Duration) (*Subscription, error) {
+// re-establish it. dial opens a fresh socket (a bound CreateWebSocketSubscription), and
+// payload returns the message to (re)subscribe with, evaluated at the moment of each
+// (re)subscribe — including this initial one — so the caller never builds a payload at
+// the call site.
+func NewSubscription(ctx context.Context, dial func(ctx context.Context, payload any) (*Conn, error), payload func() any, maxRetryDuration time.Duration) (*Subscription, error) {
 	conn, err := dial(ctx, payload())
 	if err != nil {
 		return nil, err
 	}
 
 	return &Subscription{
-		logType:          logType,
 		conn:             conn,
 		dial:             dial,
 		payload:          payload,
@@ -323,9 +315,7 @@ func (s *Subscription) Run(ctx context.Context, onNext func(payload []byte) erro
 				return ctx.Err()
 			}
 
-			logger.Stdout.Debug("connection error, resubscribing",
-				slog.String("subscription", string(s.logType)),
-				logger.ErrAttr(err))
+			logger.Stdout.Debug("connection error, resubscribing", logger.ErrAttr(err))
 
 			if err := s.Redial(ctx); err != nil {
 				return err
@@ -338,15 +328,12 @@ func (s *Subscription) Run(ctx context.Context, onNext func(payload []byte) erro
 			Type subscriptions.SubscriptionType `json:"type"`
 		}
 		if err := json.Unmarshal(payload, &envelope); err != nil {
-			logger.Stdout.Debug("could not parse subscription message, skipping",
-				slog.String("subscription", string(s.logType)),
-				logger.ErrAttr(err))
+			logger.Stdout.Debug("could not parse subscription message, skipping", logger.ErrAttr(err))
 			continue
 		}
 
 		if envelope.Type != subscriptions.SubscriptionTypeNext {
 			logger.Stdout.Debug("subscription ended, resubscribing over existing connection",
-				slog.String("subscription", string(s.logType)),
 				slog.String("type", string(envelope.Type)))
 
 			if err := s.Reuse(ctx); err != nil {
