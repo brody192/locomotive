@@ -24,10 +24,13 @@ func fetchEnvironmentWithRetry(ctx context.Context, g *railway.GraphQLClient, en
 		return nil
 	}
 
-	return queue.RetryConstant(ctx,
+	return queue.RetryBackoff(ctx,
 		queue.Name("environment-data-fetch"),
-		queue.MaxRetries(3600),
-		queue.RetryInterval((1 * time.Second)),
+		queue.MaxRetries(120), // give up after ~1h of (capped) backoff, letting the subscription restart
+		queue.InitialBackoff(1*time.Second),
+		queue.MaxBackoff(30*time.Second),
+		queue.BackoffMultiplier(2),
+		queue.BackoffJitter(0.5),
 		fn,
 	)
 }

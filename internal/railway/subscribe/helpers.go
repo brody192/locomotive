@@ -3,12 +3,14 @@ package subscribe
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
 	"time"
 
 	"github.com/brody192/locomotive/internal/logger"
+	"github.com/brody192/locomotive/internal/queue"
 	"github.com/brody192/locomotive/internal/railway/gql/subscriptions"
 	"github.com/coder/websocket"
 )
@@ -17,10 +19,17 @@ const (
 	pingInterval = 30 * time.Second
 	pingTimeout  = 10 * time.Second
 
-	// resubscribeBackoff is applied before every resubscribe attempt — including the
-	// first — so a connection that is established but then immediately dropped or
-	// completed by the server cannot spin into a tight reconnect loop.
-	resubscribeBackoff = 1 * time.Second
+	// Re-establishing a subscription is driven by queue.RetryBackoff (see Run). A stream
+	// that delivers data resets the backoff; consecutive streams that end without
+	// delivering anything — e.g. a backend completing immediately while shedding load —
+	// grow the delay from resubscribeInitialBackoff toward resubscribeMaxBackoff, so
+	// locomotive stops re-issuing streams at a fixed cadence and lets the backend recover
+	// instead of perpetuating the loop. The jitter de-synchronizes many subscriptions so
+	// they don't resubscribe in lockstep.
+	resubscribeInitialBackoff = 1 * time.Second
+	resubscribeMaxBackoff     = 30 * time.Second
+	resubscribeBackoffFactor  = 2.0
+	resubscribeBackoffJitter  = 0.5
 
 	// maxConcurrentSubscriptionOpens bounds how many subscriptions may be initializing
 	// at the same time, to stay comfortably within the backend's limit on concurrent
@@ -50,6 +59,11 @@ const (
 	LogTypeEnvironmentInvalidation LogType = "environment_invalidation"
 )
 
+// logAttrSubscription is the structured-log attribute key carrying a subscription's
+// LogType, so every line for a subscription — stream events and retries alike — is tagged
+// the same way with the same value.
+const logAttrSubscription = "subscription"
+
 // subscriptionOpenLimiter is a global counting semaphore that bounds how many
 // subscriptions may be initializing at once across every subscription type.
 var subscriptionOpenLimiter = make(chan struct{}, maxConcurrentSubscriptionOpens)
@@ -71,6 +85,10 @@ func AcquireOpenSlot(ctx context.Context) (release func(), err error) {
 type Conn struct {
 	*websocket.Conn
 	stopPing context.CancelFunc
+
+	// broken is set once a read fails or the connection is closed, marking the socket as
+	// no longer usable for another subscribe. Only touched from the read/connect goroutine.
+	broken bool
 }
 
 // NewConn wraps a websocket.Conn and starts a background ping loop.
@@ -124,6 +142,7 @@ func (c *Conn) CloseNow() (err error) {
 		return nil
 	}
 
+	c.broken = true
 	c.stopPing()
 
 	defer func() {
@@ -135,15 +154,26 @@ func (c *Conn) CloseNow() (err error) {
 	return c.Conn.CloseNow()
 }
 
-// Read reads from the underlying connection with panic recovery.
+// Read reads from the underlying connection with panic recovery. A failed read marks the
+// connection broken so it won't be reused.
 func (c *Conn) Read(ctx context.Context) (mT websocket.MessageType, b []byte, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("recovered from read panic: %v", r)
 		}
+		if err != nil {
+			c.broken = true
+		}
 	}()
 
 	return c.Conn.Read(ctx)
+}
+
+// reusable reports whether the connection can carry another subscribe without redialing —
+// false once a read has failed or it has been closed. Nil-safe, so callers can probe a
+// not-yet-dialed connection.
+func (c *Conn) reusable() bool {
+	return c != nil && !c.broken
 }
 
 // Subscribe sends a new graphql-transport-ws subscribe message over the existing
@@ -168,170 +198,107 @@ func (c *Conn) Subscribe(ctx context.Context, payload any) error {
 	return c.Conn.Write(ctx, websocket.MessageText, msg)
 }
 
-// resubscribeWithRetry closes the old connection and repeatedly calls createFn
-// until it succeeds, the context is cancelled, or maxRetryDuration elapses.
-//
-// A constant resubscribeBackoff is applied before every attempt — including the
-// first. The pre-first-attempt delay is what prevents a connection that establishes
-// successfully but is then immediately dropped or completed by the server from
-// spinning into a tight reconnect loop.
-func resubscribeWithRetry(ctx context.Context, conn *Conn, maxRetryDuration time.Duration, createFn func(ctx context.Context) (*Conn, error)) (*Conn, error) {
-	conn.CloseNow()
-
-	retryStart := time.Now()
-
-	for attempt := 1; ; attempt++ {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-time.After(resubscribeBackoff):
-		}
-
-		elapsed := time.Since(retryStart)
-		if elapsed > maxRetryDuration {
-			return nil, fmt.Errorf("failed to resubscribe after %v (%d attempts): maximum retry duration exceeded", elapsed.Round(time.Second), attempt-1)
-		}
-
-		newConn, err := createFn(ctx)
-		if err != nil {
-			logger.Stdout.LogAttrs(ctx, slog.LevelDebug, "error resubscribing, will retry",
-				logger.ErrAttr(err),
-				slog.Int("attempt", attempt),
-				slog.Duration("elapsed", elapsed.Round(time.Millisecond)),
-			)
-
-			continue
-		}
-
-		if attempt > 1 {
-			logger.Stdout.LogAttrs(ctx, slog.LevelInfo, "successfully resubscribed",
-				slog.Int("attempts", attempt),
-				slog.Duration("elapsed", time.Since(retryStart).Round(time.Millisecond)),
-			)
-		}
-
-		return newConn, nil
-	}
-}
-
-// resubscribeReusing restarts a subscription over the EXISTING connection by sending a
-// fresh subscribe message, avoiding a full redial (no new TLS handshake or
-// connection_init/ack round-trip). The constant resubscribeBackoff is applied first so
-// a server that immediately completes the subscription cannot cause a tight loop.
-//
-// If the existing connection can no longer be written to (e.g. the server closed it),
-// it falls back to a full redial via resubscribeWithRetry. The returned connection is
-// the same one on reuse, or a fresh one on fallback.
-func resubscribeReusing(ctx context.Context, conn *Conn, maxRetryDuration time.Duration, payload any, redialFn func(ctx context.Context) (*Conn, error)) (*Conn, error) {
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case <-time.After(resubscribeBackoff):
-	}
-
-	if err := conn.Subscribe(ctx, payload); err != nil {
-		logger.Stdout.LogAttrs(ctx, slog.LevelDebug, "could not reuse connection, falling back to redial", logger.ErrAttr(err))
-
-		return resubscribeWithRetry(ctx, conn, maxRetryDuration, redialFn)
-	}
-
-	return conn, nil
-}
+// errStreamEnded marks a stream that ended without delivering any data — a retryable
+// condition that drives RetryBackoff to wait and re-establish the subscription.
+var errStreamEnded = errors.New("subscription stream ended without delivering data")
 
 // Subscription owns a Conn and knows how to re-establish it, either by reusing the
-// existing socket (Reuse) or redialing (Redial). The resume state stays in the caller:
-// payload is called fresh on every (re)subscribe, so a caller that tails forward simply
-// closes over its last-seen position instead of threading it through every call.
+// existing socket or redialing. The resume state stays in the caller: payload is called
+// fresh on every (re)subscribe, so a caller that tails forward simply closes over its
+// last-seen position instead of threading it through every call.
 type Subscription struct {
-	logType          LogType
-	conn             *Conn
-	dial             func(ctx context.Context, payload any) (*Conn, error)
-	payload          func() any
-	maxRetryDuration time.Duration
+	logType LogType
+	conn    *Conn
+	dial    func(ctx context.Context, payload any) (*Conn, error)
+	payload func() any
 }
 
-// NewSubscription opens the initial connection and returns a Subscription that can
-// re-establish it. logType labels the subscription in its resubscribe logs. dial opens a
-// fresh socket (a bound CreateWebSocketSubscription), and payload returns the message to
-// (re)subscribe with, evaluated at the moment of each (re)subscribe — including this
-// initial one — so the caller never builds a payload at the call site.
-func NewSubscription(ctx context.Context, logType LogType, dial func(ctx context.Context, payload any) (*Conn, error), payload func() any, maxRetryDuration time.Duration) (*Subscription, error) {
-	conn, err := dial(ctx, payload())
-	if err != nil {
-		return nil, err
-	}
-
+// NewSubscription returns a Subscription. logType labels it in logs, dial opens a fresh
+// socket (a bound CreateWebSocketSubscription), and payload returns the message to
+// (re)subscribe with, evaluated at the moment of each (re)subscribe so the caller never
+// builds a payload at the call site. The connection is opened lazily by Run.
+func NewSubscription(logType LogType, dial func(ctx context.Context, payload any) (*Conn, error), payload func() any) *Subscription {
 	return &Subscription{
-		logType:          logType,
-		conn:             conn,
-		dial:             dial,
-		payload:          payload,
-		maxRetryDuration: maxRetryDuration,
-	}, nil
-}
-
-// Read reads the next message from the current connection.
-func (s *Subscription) Read(ctx context.Context) (websocket.MessageType, []byte, error) {
-	return s.conn.Read(ctx)
+		logType: logType,
+		dial:    dial,
+		payload: payload,
+	}
 }
 
 // Close tears down the current connection.
 func (s *Subscription) Close() error {
+	if s.conn == nil {
+		return nil
+	}
+
 	return s.conn.CloseNow()
 }
 
-// Reuse restarts the subscription over the existing socket, falling back to a redial if
-// the socket is no longer usable. Used when the stream completed cleanly.
-func (s *Subscription) Reuse(ctx context.Context) error {
-	conn, err := resubscribeReusing(ctx, s.conn, s.maxRetryDuration, s.payload(), s.redial)
-	if err != nil {
-		return err
+// connect establishes the stream for the next consume: it sends a fresh subscribe over the
+// existing socket when that socket is still usable, and redials otherwise (no socket yet,
+// or the last one broke). A reuse whose write fails falls back to a redial.
+func (s *Subscription) connect(ctx context.Context) error {
+	if s.conn.reusable() {
+		err := s.conn.Subscribe(ctx, s.payload())
+		if err == nil {
+			logger.Stdout.Debug("resubscribed over existing connection",
+				slog.String(logAttrSubscription, string(s.logType)))
+			return nil
+		}
+
+		logger.Stdout.LogAttrs(ctx, slog.LevelDebug, "could not reuse connection, falling back to redial",
+			slog.String(logAttrSubscription, string(s.logType)),
+			logger.ErrAttr(err))
 	}
 
-	s.conn = conn
-	return nil
-}
-
-// Redial reconnects with a fresh socket. Used when the current connection is broken.
-func (s *Subscription) Redial(ctx context.Context) error {
-	conn, err := resubscribeWithRetry(ctx, s.conn, s.maxRetryDuration, s.redial)
-	if err != nil {
-		return err
+	if s.conn != nil {
+		s.conn.CloseNow()
+		s.conn = nil
 	}
 
-	s.conn = conn
-	return nil
-}
-
-func (s *Subscription) redial(ctx context.Context) (*Conn, error) {
-	return s.dial(ctx, s.payload())
-}
-
-// Run reads messages until ctx is cancelled, driving the (re)subscribe policy shared by
-// every subscription:
-//   - a connection error → redial (the socket is broken)
-//   - a non-"next" message, e.g. "complete" → reuse the socket (resubscribe over it)
-//   - a malformed message → log and skip (one bad frame shouldn't kill the stream)
-//   - a "next" message → hand the raw payload to onNext
-//
-// onNext returning an error stops Run and returns that error; returning nil continues.
-func (s *Subscription) Run(ctx context.Context, onNext func(payload []byte) error) error {
-	for {
-		_, payload, err := s.Read(ctx)
-		if err != nil {
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-
-			logger.Stdout.Debug("connection error, resubscribing",
-				slog.String("subscription", string(s.logType)),
+	conn, err := s.dial(ctx, s.payload())
+	if err != nil {
+		// A genuine failure to establish the connection (dial/handshake/auth), as opposed
+		// to a stream that merely completed. Surface it at error level so a wedged
+		// subscription is visible even though Run retries indefinitely. Context
+		// cancellation is a normal shutdown, not an error.
+		if ctx.Err() == nil {
+			logger.Stdout.LogAttrs(ctx, slog.LevelError, "failed to establish subscription connection",
+				slog.String(logAttrSubscription, string(s.logType)),
 				logger.ErrAttr(err))
+		}
 
-			if err := s.Redial(ctx); err != nil {
-				return err
+		return err
+	}
+
+	s.conn = conn
+
+	logger.Stdout.Debug("established new connection",
+		slog.String(logAttrSubscription, string(s.logType)))
+
+	return nil
+}
+
+// consume reads from the current connection until the stream ends, the context is
+// cancelled, or onNext fails, handing each "next" payload to onNext. It returns whether at
+// least one "next" message arrived (a productive stream) and a terminal error — context
+// cancellation or an onNext failure — that should stop Run rather than be retried. A
+// stream that merely ended (a non-"next" message, or a connection error) returns a nil
+// error; whether the socket can be reused afterward is tracked by the Conn itself (a
+// failed read marks it broken).
+func (s *Subscription) consume(ctx context.Context, onNext func(payload []byte) error) (delivered bool, err error) {
+	for {
+		_, payload, readErr := s.conn.Read(ctx)
+		if readErr != nil {
+			if ctx.Err() != nil {
+				return delivered, ctx.Err()
 			}
 
-			continue
+			logger.Stdout.Debug("connection error, stream ended",
+				slog.String(logAttrSubscription, string(s.logType)),
+				logger.ErrAttr(readErr))
+
+			return delivered, nil
 		}
 
 		var envelope struct {
@@ -339,25 +306,74 @@ func (s *Subscription) Run(ctx context.Context, onNext func(payload []byte) erro
 		}
 		if err := json.Unmarshal(payload, &envelope); err != nil {
 			logger.Stdout.Debug("could not parse subscription message, skipping",
-				slog.String("subscription", string(s.logType)),
+				slog.String(logAttrSubscription, string(s.logType)),
 				logger.ErrAttr(err))
 			continue
 		}
 
 		if envelope.Type != subscriptions.SubscriptionTypeNext {
-			logger.Stdout.Debug("subscription ended, resubscribing over existing connection",
-				slog.String("subscription", string(s.logType)),
+			logger.Stdout.Debug("subscription ended",
+				slog.String(logAttrSubscription, string(s.logType)),
 				slog.String("type", string(envelope.Type)))
 
-			if err := s.Reuse(ctx); err != nil {
-				return err
-			}
-
-			continue
+			return delivered, nil
 		}
+
+		delivered = true
 
 		if err := onNext(payload); err != nil {
+			return delivered, err
+		}
+	}
+}
+
+// Run establishes the stream and consumes it until ctx is cancelled (or onNext fails),
+// re-establishing it whenever it ends. Re-establishment goes through queue.RetryBackoff:
+// each attempt connects (reusing the socket after a clean end, redialing otherwise) and
+// consumes the stream. An attempt that ends without delivering anything is retryable, so
+// consecutive empty streams — e.g. a backend completing immediately while shedding load —
+// grow the jittered backoff instead of spinning in a tight loop; an attempt that
+// delivered at least one message succeeds, resetting the backoff before the next stream.
+//
+// onNext returning an error stops Run and returns that error; ctx cancellation returns
+// its error. Otherwise Run retries indefinitely so a transient backend outage is ridden
+// out rather than surfaced as a fatal error.
+func (s *Subscription) Run(ctx context.Context, onNext func(payload []byte) error) error {
+	for {
+		err := queue.RetryBackoff(ctx,
+			queue.Name(string(s.logType)),
+			queue.MaxRetries(-1), // retry until ctx is cancelled or onNext fails
+			queue.InitialBackoff(resubscribeInitialBackoff),
+			queue.MaxBackoff(resubscribeMaxBackoff),
+			queue.BackoffMultiplier(resubscribeBackoffFactor),
+			queue.BackoffJitter(resubscribeBackoffJitter),
+			func(ctx context.Context) error {
+				if err := s.connect(ctx); err != nil {
+					return queue.Retryable(fmt.Errorf("establishing %s subscription: %w", s.logType, err))
+				}
+
+				delivered, err := s.consume(ctx, onNext)
+				if err != nil {
+					return err
+				}
+
+				// Any delivered message — even one — counts as success and resets the
+				// backoff. Only a stream that ended without delivering anything (e.g. the
+				// backend completing immediately while shedding load) is retried, so the
+				// backoff grows for genuinely empty streams, not for merely quiet ones.
+				if !delivered {
+					return queue.Retryable(errStreamEnded)
+				}
+
+				return nil
+			},
+		)
+		if err != nil {
 			return err
 		}
+
+		// A productive stream ended; loop to re-establish. RetryBackoff waits before every
+		// attempt — including the first of this next call — so the productive path can't
+		// spin into a same-second resubscribe loop.
 	}
 }

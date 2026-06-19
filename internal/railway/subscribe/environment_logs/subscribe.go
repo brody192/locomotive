@@ -25,8 +25,10 @@ func environmentLogsPayload(environmentId uuid.UUID, serviceIds []uuid.UUID, bef
 			EnvironmentId: environmentId,
 			Filter:        buildServiceFilter(serviceIds),
 
-			BeforeDate:  beforeDate.UTC().Format(time.RFC3339Nano),
-			BeforeLimit: 500,
+			BeforeDate: beforeDate.UTC().Format(time.RFC3339Nano),
+			// 5000 is the backend's maximum allowed beforeLimit; ask for as much as we can
+			// per poll so high-throughput environments lose fewer logs to the per-poll cap.
+			BeforeLimit: 5000,
 		},
 	}
 }
@@ -43,12 +45,9 @@ func SubscribeToServiceLogs(ctx context.Context, g *railway.GraphQLClient, logTr
 	// connect and every resubscribe alike.
 	LogTime := time.Now().UTC()
 
-	sub, err := subscribe.NewSubscription(ctx, subscribe.LogTypeEnvironment, g.CreateWebSocketSubscription, func() any {
+	sub := subscribe.NewSubscription(subscribe.LogTypeEnvironment, g.CreateWebSocketSubscription, func() any {
 		return environmentLogsPayload(environmentId, serviceIds, LogTime)
-	}, (3600 * time.Second))
-	if err != nil {
-		return err
-	}
+	})
 
 	defer func() { sub.Close() }()
 

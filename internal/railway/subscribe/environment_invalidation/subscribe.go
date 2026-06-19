@@ -3,7 +3,6 @@ package environment_invalidation
 import (
 	"context"
 	"encoding/json"
-	"time"
 
 	"github.com/brody192/locomotive/internal/logger"
 	"github.com/brody192/locomotive/internal/railway"
@@ -22,12 +21,9 @@ func invalidationRequestPayload(environmentId uuid.UUID) *subscriptions.CanvasIn
 }
 
 func SubscribeToInvalidationRequests(ctx context.Context, g *railway.GraphQLClient, environmentHashTrack chan<- string, environmentId uuid.UUID) error {
-	sub, err := subscribe.NewSubscription(ctx, subscribe.LogTypeEnvironmentInvalidation, g.CreateWebSocketSubscription, func() any {
+	sub := subscribe.NewSubscription(subscribe.LogTypeEnvironmentInvalidation, g.CreateWebSocketSubscription, func() any {
 		return invalidationRequestPayload(environmentId)
-	}, (3600 * time.Second))
-	if err != nil {
-		return err
-	}
+	})
 
 	defer func() { sub.Close() }()
 
