@@ -44,7 +44,8 @@ func unwrapRetryable(err error) error {
 // maxRetries below zero retries indefinitely (until success, a non-retryable error, or
 // context cancellation) — for long-lived reconnect loops that should keep trying.
 //
-// The first attempt runs immediately. The delay before the Nth retry is
+// A delay precedes every attempt, including the first, so fn is never invoked more often
+// than the backoff allows. The delay before attempt N (1-indexed) is
 // initialBackoff * multiplier^(N-1), capped at maxBackoff, then varied symmetrically by up
 // to jitter (a fraction in [0,1]) so concurrent retriers don't resynchronize — never
 // exceeding maxBackoff, so the jitter only reaches downward once a delay is at the cap.
@@ -68,6 +69,26 @@ func RetryBackoff(
 	var lastErr error
 
 	for attempt := 0; ; attempt++ {
+		backoff := applyJitter(
+			calculateBackoff(attempt, initialBackoff.v, maxBackoff.v, backoffMultiplier.v),
+			backoffJitter.v,
+			maxBackoff.v,
+		)
+
+		if attempt > 0 {
+			log.Debug("failed, retrying",
+				slog.Int("attempt", attempt+1),
+				slog.Duration("next_retry", backoff),
+				slog.String("err", lastErr.Error()),
+			)
+		}
+
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("context cancelled during retry backoff: %w", context.Cause(ctx))
+		case <-time.After(backoff):
+		}
+
 		err := fn(ctx)
 		if err == nil {
 			if attempt > 0 {
@@ -92,24 +113,6 @@ func RetryBackoff(
 				slog.String("last_err", lastErr.Error()),
 			)
 			return fmt.Errorf("all %d attempts failed, last error: %w", attempt+1, lastErr)
-		}
-
-		backoff := applyJitter(
-			calculateBackoff(attempt, initialBackoff.v, maxBackoff.v, backoffMultiplier.v),
-			backoffJitter.v,
-			maxBackoff.v,
-		)
-
-		log.Debug("failed, retrying",
-			slog.Int("attempt", attempt+1),
-			slog.Duration("next_retry", backoff),
-			slog.String("err", lastErr.Error()),
-		)
-
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("context cancelled during retry backoff: %w", context.Cause(ctx))
-		case <-time.After(backoff):
 		}
 	}
 }

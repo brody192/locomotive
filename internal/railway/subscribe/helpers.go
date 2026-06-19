@@ -372,6 +372,8 @@ func (s *Subscription) Run(ctx context.Context, onNext func(payload []byte) erro
 			return err
 		}
 
-		// A productive stream ended; loop to establish the next with a fresh backoff.
+		// A productive stream ended; loop to re-establish. RetryBackoff waits before every
+		// attempt — including the first of this next call — so the productive path can't
+		// spin into a same-second resubscribe loop.
 	}
 }
