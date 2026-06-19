@@ -105,7 +105,7 @@ func init() {
 
 	for mode, config := range WebhookModeToConfig {
 		if mode == Global.WebhookMode {
-			if !containsAnyHost(Global.WebhookUrl.Hostname(), config.ExpectedHostContains) {
+			if len(config.ExpectedHostContains) > 0 && !containsAnyHost(Global.WebhookUrl.Hostname(), config.ExpectedHostContains) {
 				hostAttrs = append(hostAttrs, slog.String("expected_host_contains", strings.Join(config.ExpectedHostContains, " OR ")))
 				hostMisconfigured = true
 			}
