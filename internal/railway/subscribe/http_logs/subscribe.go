@@ -29,8 +29,10 @@ func httpLogsPayload(deploymentId uuid.UUID, beforeDate time.Time) *subscription
 	return &subscriptions.HttpLogsSubscriptionPayload{
 		Query: subscriptions.HttpLogsSubscription,
 		Variables: &subscriptions.HttpLogsSubscriptionVariables{
-			BeforeDate:   beforeDate.UTC().Format(time.RFC3339Nano),
-			BeforeLimit:  500,
+			BeforeDate: beforeDate.UTC().Format(time.RFC3339Nano),
+			// 5000 is the backend's maximum allowed beforeLimit; ask for as much as we can
+			// per poll so high-throughput deployments lose fewer logs to the per-poll cap.
+			BeforeLimit:  5000,
 			DeploymentId: deploymentId,
 			Filter:       "",
 		},
