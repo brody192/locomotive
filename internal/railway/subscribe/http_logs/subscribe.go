@@ -181,12 +181,9 @@ func getHttpLogs(ctx context.Context, g *railway.GraphQLClient, deploymentID uui
 	// after what we've already seen — on the first connect and every resubscribe alike.
 	logTimes := time.Now().Add(-httpLogsInitialBacklog)
 
-	sub, err := subscribe.NewSubscription(ctx, subscribe.LogTypeHTTP, g.CreateWebSocketSubscription, func() any {
+	sub := subscribe.NewSubscription(subscribe.LogTypeHTTP, g.CreateWebSocketSubscription, func() any {
 		return httpLogsPayload(deploymentID, logTimes)
-	}, (3600 * time.Second))
-	if err != nil {
-		return fmt.Errorf("failed to create subscription for deployment %s: %w", deploymentID, err)
-	}
+	})
 
 	defer func() { sub.Close() }()
 

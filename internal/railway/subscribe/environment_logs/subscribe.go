@@ -43,12 +43,9 @@ func SubscribeToServiceLogs(ctx context.Context, g *railway.GraphQLClient, logTr
 	// connect and every resubscribe alike.
 	LogTime := time.Now().UTC()
 
-	sub, err := subscribe.NewSubscription(ctx, subscribe.LogTypeEnvironment, g.CreateWebSocketSubscription, func() any {
+	sub := subscribe.NewSubscription(subscribe.LogTypeEnvironment, g.CreateWebSocketSubscription, func() any {
 		return environmentLogsPayload(environmentId, serviceIds, LogTime)
-	}, (3600 * time.Second))
-	if err != nil {
-		return err
-	}
+	})
 
 	defer func() { sub.Close() }()
 

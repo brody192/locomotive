@@ -39,27 +39,39 @@ func unwrapRetryable(err error) error {
 	return err
 }
 
-// RetryConstant calls fn repeatedly with a fixed interval until it succeeds, returns a
-// non-retryable error, the context is cancelled, or maxRetries is exhausted.
+// RetryBackoff calls fn repeatedly with exponential, jittered backoff until it succeeds,
+// returns a non-retryable error, the context is cancelled, or maxRetries is exhausted. A
+// maxRetries below zero retries indefinitely (until success, a non-retryable error, or
+// context cancellation) — for long-lived reconnect loops that should keep trying.
 //
-// fn must wrap retryable errors with [Retryable]. Any other non-nil error stops the loop immediately.
-func RetryConstant(
+// The first attempt runs immediately. The delay before the Nth retry is
+// initialBackoff * multiplier^(N-1), capped at maxBackoff, then varied symmetrically by up
+// to jitter (a fraction in [0,1]) so concurrent retriers don't resynchronize — never
+// exceeding maxBackoff, so the jitter only reaches downward once a delay is at the cap.
+//
+// fn must wrap retryable errors with [Retryable]; any other non-nil error stops the loop
+// immediately. Per-attempt retries are logged at debug level, since this primitive is
+// meant for high-frequency reconnects where higher levels would be noise.
+func RetryBackoff(
 	ctx context.Context,
 	name nameParam,
 	maxRetries maxRetriesParam,
-	interval retryIntervalParam,
+	initialBackoff initialBackoffParam,
+	maxBackoff maxBackoffParam,
+	backoffMultiplier backoffMultiplierParam,
+	backoffJitter backoffJitterParam,
 	fn func(ctx context.Context) error,
 ) error {
 	log := logger.Stdout.With(slog.String("retry", name.v))
 
-	maxAttempts := 1 + maxRetries.v
+	unlimited := maxRetries.v < 0
 	var lastErr error
 
-	for attempt := range maxAttempts {
+	for attempt := 0; ; attempt++ {
 		err := fn(ctx)
 		if err == nil {
 			if attempt > 0 {
-				log.Info("succeeded after retry", slog.Int("attempts", attempt+1))
+				log.Debug("succeeded after retry", slog.Int("attempts", attempt+1))
 			}
 			return nil
 		}
@@ -74,27 +86,30 @@ func RetryConstant(
 
 		lastErr = unwrapRetryable(err)
 
-		if attempt < maxRetries.v {
-			log.Warn("failed, retrying",
-				slog.Int("attempt", attempt+1),
-				slog.Int("max_attempts", maxAttempts),
-				slog.Duration("next_retry", interval.v),
-				slog.String("err", lastErr.Error()),
+		if !unlimited && attempt >= maxRetries.v {
+			log.Error("giving up after exhausting all retries",
+				slog.Int("attempts", attempt+1),
+				slog.String("last_err", lastErr.Error()),
 			)
-
-			select {
-			case <-ctx.Done():
-				return fmt.Errorf("context cancelled during retry backoff: %w", context.Cause(ctx))
-			case <-time.After(interval.v):
-			}
-			continue
+			return fmt.Errorf("all %d attempts failed, last error: %w", attempt+1, lastErr)
 		}
 
-		log.Error("giving up after exhausting all retries",
-			slog.Int("attempts", maxAttempts),
-			slog.String("last_err", lastErr.Error()),
+		backoff := applyJitter(
+			calculateBackoff(attempt, initialBackoff.v, maxBackoff.v, backoffMultiplier.v),
+			backoffJitter.v,
+			maxBackoff.v,
 		)
-	}
 
-	return fmt.Errorf("all %d attempts failed, last error: %w", maxAttempts, lastErr)
+		log.Debug("failed, retrying",
+			slog.Int("attempt", attempt+1),
+			slog.Duration("next_retry", backoff),
+			slog.String("err", lastErr.Error()),
+		)
+
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("context cancelled during retry backoff: %w", context.Cause(ctx))
+		case <-time.After(backoff):
+		}
+	}
 }

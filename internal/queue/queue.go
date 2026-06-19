@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"math/rand/v2"
 	"sync"
 	"time"
 
@@ -19,10 +20,10 @@ type (
 	nameParam              struct{ v string }
 	maxQueueSizeParam      struct{ v int }
 	maxRetriesParam        struct{ v int }
-	retryIntervalParam     struct{ v time.Duration }
 	initialBackoffParam    struct{ v time.Duration }
 	maxBackoffParam        struct{ v time.Duration }
 	backoffMultiplierParam struct{ v float64 }
+	backoffJitterParam     struct{ v float64 }
 	ttlParam               struct{ v time.Duration }
 	workersParam           struct{ v int }
 )
@@ -30,14 +31,14 @@ type (
 func Name(name string) nameParam                         { return nameParam{name} }
 func MaxQueueSize(size int) maxQueueSizeParam            { return maxQueueSizeParam{size} }
 func MaxRetries(retries int) maxRetriesParam             { return maxRetriesParam{retries} }
-func RetryInterval(d time.Duration) retryIntervalParam   { return retryIntervalParam{d} }
 func InitialBackoff(d time.Duration) initialBackoffParam { return initialBackoffParam{d} }
 func MaxBackoff(d time.Duration) maxBackoffParam         { return maxBackoffParam{d} }
 func BackoffMultiplier(multiplier float64) backoffMultiplierParam {
 	return backoffMultiplierParam{multiplier}
 }
-func TTL(d time.Duration) ttlParam { return ttlParam{d} }
-func Workers(n int) workersParam   { return workersParam{n} }
+func BackoffJitter(fraction float64) backoffJitterParam { return backoffJitterParam{fraction} }
+func TTL(d time.Duration) ttlParam                      { return ttlParam{d} }
+func Workers(n int) workersParam                        { return workersParam{n} }
 
 type config struct {
 	name              string
@@ -323,4 +324,26 @@ func calculateBackoff(attempt int, initial, max time.Duration, multiplier float6
 		b = float64(max)
 	}
 	return time.Duration(b)
+}
+
+// applyJitter varies d symmetrically by a random fraction in [-jitter, jitter), then caps
+// the result at max so the jitter never pushes a delay above the ceiling. jitter is clamped
+// to [0, 1]; a jitter of 0 returns min(d, max). The full ± spread is preserved while the
+// jittered value stays under max, and becomes one-sided (downward only) once d reaches the
+// cap. Jittering de-synchronizes many retriers that would otherwise back off in lockstep.
+func applyJitter(d time.Duration, jitter float64, max time.Duration) time.Duration {
+	jittered := d
+
+	if jitter > 0 {
+		if jitter > 1 {
+			jitter = 1
+		}
+		jittered = time.Duration(float64(d) * (1 + jitter*(2*rand.Float64()-1)))
+	}
+
+	if jittered > max {
+		jittered = max
+	}
+
+	return jittered
 }
