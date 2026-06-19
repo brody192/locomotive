@@ -10,9 +10,3 @@ func HttpLogsJsonArray(logs []http_logs.DeploymentHttpLogWithMetadata) ([]byte, 
 		TimestampAttribute: timestampAttribute,
 	})
 }
-
-func HttpLogsJsonLines(logs []http_logs.DeploymentHttpLogWithMetadata) ([]byte, error) {
-	return reconstruct_json.HttpLogsJsonLinesWithConfig(logs, reconstruct_json.Config{
-		TimestampAttribute: timestampAttribute,
-	})
-}

@@ -3,7 +3,6 @@ package railway
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -12,17 +11,10 @@ import (
 	"github.com/brody192/locomotive/internal/railway/gql/subscriptions"
 	"github.com/brody192/locomotive/internal/railway/subscribe"
 	"github.com/coder/websocket"
-	"github.com/flexstack/uuid"
 )
 
 func (g *GraphQLClient) CreateWebSocketSubscription(ctx context.Context, payload any) (*subscribe.Conn, error) {
-	subPayload := map[string]any{
-		"id":      uuid.Must(uuid.NewV4()),
-		"type":    subscriptions.SubscriptionTypeSubscribe,
-		"payload": payload,
-	}
-
-	payloadBytes, err := json.Marshal(&subPayload)
+	payloadBytes, err := subscriptions.NewSubscribeMessage(payload)
 	if err != nil {
 		return nil, err
 	}
@@ -35,6 +27,16 @@ func (g *GraphQLClient) CreateWebSocketSubscription(ctx context.Context, payload
 		Subprotocols: []string{"graphql-transport-ws"},
 	}
 
+	// Limit how many subscriptions initialize concurrently. The slot is released as
+	// soon as this function returns — the established stream does not hold it.
+	release, err := subscribe.AcquireOpenSlot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
+	// Bound the whole handshake (dial + init + ack + subscribe) so a stuck open cannot
+	// hold a concurrency slot indefinitely.
 	ctxTimeout, cancel := context.WithTimeout(ctx, (10 * time.Second))
 	defer cancel()
 
@@ -45,12 +47,12 @@ func (g *GraphQLClient) CreateWebSocketSubscription(ctx context.Context, payload
 
 	c.SetReadLimit(-1)
 
-	if err := c.Write(ctx, websocket.MessageText, connectionInit); err != nil {
+	if err := c.Write(ctxTimeout, websocket.MessageText, connectionInit); err != nil {
 		c.CloseNow()
 		return nil, err
 	}
 
-	_, ackMessage, err := c.Read(ctx)
+	_, ackMessage, err := c.Read(ctxTimeout)
 	if err != nil {
 		c.CloseNow()
 		return nil, err
@@ -61,7 +63,7 @@ func (g *GraphQLClient) CreateWebSocketSubscription(ctx context.Context, payload
 		return nil, errors.New("did not receive connection ack from server")
 	}
 
-	if err := c.Write(ctx, websocket.MessageText, payloadBytes); err != nil {
+	if err := c.Write(ctxTimeout, websocket.MessageText, payloadBytes); err != nil {
 		c.CloseNow()
 		return nil, err
 	}

@@ -67,7 +67,7 @@ func httpLogLineJson(log http_logs.DeploymentHttpLogWithMetadata, config Config)
 
 	object, _ = sjson.SetBytes(object, messageAttribute, log.Path)
 
-	for _, attribute := range config.ReserverdAttributes {
+	for _, attribute := range config.ReservedAttributes {
 		attr := gjson.GetBytes(object, attribute)
 
 		if attr.Exists() {

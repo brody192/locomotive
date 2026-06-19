@@ -5,13 +5,13 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"sync/atomic"
 	"syscall"
 
 	"github.com/brody192/locomotive/internal/config"
 	"github.com/brody192/locomotive/internal/errgroup"
 	"github.com/brody192/locomotive/internal/logger"
 	"github.com/brody192/locomotive/internal/logline/serializer"
+	"github.com/brody192/locomotive/internal/pipeline"
 	"github.com/brody192/locomotive/internal/railway"
 	"github.com/brody192/locomotive/internal/railway/subscribe/environment_logs"
 	"github.com/brody192/locomotive/internal/railway/subscribe/http_logs"
@@ -24,11 +24,11 @@ func main() {
 func run() int {
 	logger.Stdout.Info("Preparing the locomotive for departure...")
 
-	gqlClient, err := railway.NewClient(&railway.GraphQLClient{
-		AuthToken:           config.Global.RailwayApiKey,
-		BaseURL:             "https://backboard.railway.app/graphql/v2",
-		BaseSubscriptionURL: "wss://backboard.railway.app/graphql/internal",
-	})
+	gqlClient, err := railway.NewClient(
+		railway.AuthToken(config.Global.RailwayApiKey),
+		railway.BaseURL("https://backboard.railway.app/graphql/v2"),
+		railway.BaseSubscriptionURL("wss://backboard.railway.app/graphql/internal"),
+	)
 	if err != nil {
 		logger.Stderr.Error("error creating graphql client", logger.ErrAttr(err))
 		return 1
@@ -60,13 +60,12 @@ func run() int {
 		slog.Bool("enable_deploy_logs", config.Global.EnableDeployLogs),
 	)
 
-	deployLogsProcessed := atomic.Int64{}
-	httpLogsProcessed := atomic.Int64{}
+	var deployLogs, httpLogs logCounts
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	reportStatusAsync(ctx, &deployLogsProcessed, &httpLogsProcessed)
+	reportStatusAsync(ctx, &deployLogs, &httpLogs)
 
 	errGroup, _ := errgroup.NewErrGroup(ctx)
 	defer errGroup.Cancel()
@@ -77,10 +76,17 @@ func run() int {
 			return nil
 		}
 
-		return runLogPipeline(ctx, "deploy-logs", serializer.DeployLogs,
-			func(ctx context.Context, track chan []environment_logs.EnvironmentLogWithMetadata) error {
-				return environment_logs.SubscribeToServiceLogs(ctx, gqlClient, track, config.Global.EnvironmentId, config.Global.ServiceIds)
-			}, &deployLogsProcessed)
+		deployLogsPipeline := pipeline.NewLogPipeline(
+			pipeline.Client(gqlClient),
+			pipeline.EnvironmentID(config.Global.EnvironmentId),
+			pipeline.ServiceIDs(config.Global.ServiceIds),
+			pipeline.Serialize(serializer.DeployLogs),
+			pipeline.Subscribe(environment_logs.SubscribeToServiceLogs),
+			pipeline.Processed(&deployLogs.processed),
+			pipeline.Failed(&deployLogs.failed),
+		)
+
+		return deployLogsPipeline.Run(ctx)
 	})
 
 	errGroup.Go(func(ctx context.Context) error {
@@ -89,10 +95,17 @@ func run() int {
 			return nil
 		}
 
-		return runLogPipeline(ctx, "http-logs", serializer.HttpLogs,
-			func(ctx context.Context, track chan []http_logs.DeploymentHttpLogWithMetadata) error {
-				return http_logs.SubscribeToHttpLogs(ctx, gqlClient, track, config.Global.EnvironmentId, config.Global.ServiceIds)
-			}, &httpLogsProcessed)
+		httpLogsPipeline := pipeline.NewLogPipeline(
+			pipeline.Client(gqlClient),
+			pipeline.EnvironmentID(config.Global.EnvironmentId),
+			pipeline.ServiceIDs(config.Global.ServiceIds),
+			pipeline.Serialize(serializer.HttpLogs),
+			pipeline.Subscribe(http_logs.SubscribeToHttpLogs),
+			pipeline.Processed(&httpLogs.processed),
+			pipeline.Failed(&httpLogs.failed),
+		)
+
+		return httpLogsPipeline.Run(ctx)
 	})
 
 	logger.Stdout.Info("The locomotive is waiting for cargo...")

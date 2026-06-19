@@ -19,7 +19,9 @@ type WebhookConfig struct {
 	ExpectedHostContains []string
 	ExpectedHeaders      []string
 
-	Headers AdditionalHeaders
+	// DefaultHeaders are headers this mode forces on every request (e.g. Content-Type).
+	// Distinct from the user-supplied AdditionalHeaders.
+	DefaultHeaders map[string]string
 
 	EnvironmentLogReconstructorFunc func([]environment_logs.EnvironmentLogWithMetadata) ([]byte, error)
 	HTTPLogReconstructorFunc        func([]http_logs.DeploymentHttpLogWithMetadata) ([]byte, error)

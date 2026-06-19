@@ -101,55 +101,50 @@ func init() {
 		slog.Any("configured_mode", Global.WebhookMode),
 		slog.String("webhook_host", Global.WebhookUrl.Hostname()),
 	}
+	hostMisconfigured := false
 
 	for mode, config := range WebhookModeToConfig {
 		if mode == Global.WebhookMode {
-			if !containsAnyHost(Global.WebhookUrl.Hostname(), config.ExpectedHostContains) {
+			if len(config.ExpectedHostContains) > 0 && !containsAnyHost(Global.WebhookUrl.Hostname(), config.ExpectedHostContains) {
 				hostAttrs = append(hostAttrs, slog.String("expected_host_contains", strings.Join(config.ExpectedHostContains, " OR ")))
+				hostMisconfigured = true
 			}
 		} else {
 			if len(config.ExpectedHostContains) > 0 && containsAnyHost(Global.WebhookUrl.Hostname(), config.ExpectedHostContains) {
 				hostAttrs = append(hostAttrs, slog.Any("suggested_mode", mode))
+				hostMisconfigured = true
 				break
 			}
 		}
 	}
 
-	// Warn if we added any validation attributes beyond the basic ones
-	if len(hostAttrs) > 2 {
+	if hostMisconfigured {
 		logger.Stderr.Warn("possible webhook misconfiguration", hostAttrs...)
 	}
 
-	// Header validation with separate attributes and logging
 	headerAttrs := []any{
 		slog.Any("configured_mode", Global.WebhookMode),
 		slog.Any("configured_headers", Global.AdditionalHeaders.Keys()),
 	}
+	headerMisconfigured := false
 
 	if len(WebhookModeToConfig[Global.WebhookMode].ExpectedHeaders) > 0 {
 		missingHeaders := []string{}
 
 		for _, expectedHeader := range WebhookModeToConfig[Global.WebhookMode].ExpectedHeaders {
-			if !func(expectedHeader string) bool {
-				for configuredHeader := range Global.AdditionalHeaders {
-					if strings.EqualFold(configuredHeader, expectedHeader) {
-						return true
-					}
-				}
-
-				return false
-			}(expectedHeader) {
+			if !headersContainFold(Global.AdditionalHeaders, expectedHeader) {
 				missingHeaders = append(missingHeaders, expectedHeader)
 			}
 		}
 
 		if len(missingHeaders) > 0 {
 			headerAttrs = append(headerAttrs, slog.Any("missing_headers", missingHeaders))
+			headerMisconfigured = true
 		}
 	}
 
-	// Warn if we added any header validation attributes beyond the basic ones
-	if len(headerAttrs) > 2 && len(hostAttrs) <= 2 {
+	// Only warn about headers when the host looked fine, to avoid a double warning.
+	if headerMisconfigured && !hostMisconfigured {
 		logger.Stderr.Warn("possible webhook header misconfiguration", headerAttrs...)
 	}
 }

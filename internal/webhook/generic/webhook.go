@@ -22,7 +22,7 @@ var acceptedStatusCodes = []int{
 
 const maxErrorBodySize = 8192
 
-func SendRawWebhook(ctx context.Context, logs []byte, url url.URL, additionalHeaders config.AdditionalHeaders, client *http.Client) error {
+func SendRawWebhook(ctx context.Context, logs []byte, url url.URL, defaultHeaders map[string]string, additionalHeaders config.AdditionalHeaders, client *http.Client) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url.String(), bytes.NewReader(logs))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
@@ -32,7 +32,7 @@ func SendRawWebhook(ctx context.Context, logs []byte, url url.URL, additionalHea
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Keep-Alive", "timeout=5, max=1000")
 
-	for key, value := range config.WebhookModeToConfig[config.Global.WebhookMode].Headers {
+	for key, value := range defaultHeaders {
 		req.Header.Set(key, value)
 	}
 

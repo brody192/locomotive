@@ -98,4 +98,3 @@ func RetryConstant(
 
 	return fmt.Errorf("all %d attempts failed, last error: %w", maxAttempts, lastErr)
 }
-

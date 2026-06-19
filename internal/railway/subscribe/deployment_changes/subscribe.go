@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"slices"
 
 	"github.com/brody192/locomotive/internal/logger"
 	"github.com/brody192/locomotive/internal/railway"
@@ -15,7 +14,7 @@ import (
 	"github.com/flexstack/uuid"
 )
 
-func SubscribeToDeploymentIdChanges(ctx context.Context, g *railway.GraphQLClient, deploymentIdSlice *slice.Sync[DeploymentIdWithInfo], changeDetected chan<- struct{}, environmentId uuid.UUID, serviceIds []uuid.UUID) error {
+func SubscribeToDeploymentIdChanges(ctx context.Context, g *railway.GraphQLClient, deploymentIdSlice *slice.Sync[uuid.UUID], changeDetected chan<- struct{}, environmentId uuid.UUID, serviceIds []uuid.UUID) error {
 	environment := &queries.EnvironmentData{}
 
 	variables := map[string]any{
@@ -59,35 +58,44 @@ func SubscribeToDeploymentIdChanges(ctx context.Context, g *railway.GraphQLClien
 		case err := <-errorChan:
 			return err
 		case <-environmentHashTrack:
-			// logger.Stdout.Debug("invalidation request received", slog.String("hash", environmentHash))
-
 			environment := &queries.EnvironmentData{}
 
 			if err := fetchEnvironmentWithRetry(ctx, g, environment, variables); err != nil {
 				return fmt.Errorf("error getting environment data for new environment hash: %w", err)
 			}
 
-			latestSuccessfulDeploymentIdsForWantedServiceIds := findSuccessfulDeploymentsIdsForWantedServiceIds(environment, serviceIds)
+			latest := findSuccessfulDeploymentsIdsForWantedServiceIds(environment, serviceIds)
 
-			if len(latestSuccessfulDeploymentIdsForWantedServiceIds) == 0 {
-				// logger.Stdout.Debug("no new deployment id(s) for wanted service id(s)", slog.String("hash", environmentHash))
+			if len(latest) == 0 {
+				// Don't tear down everything if the environment momentarily reports none.
 				continue
+			}
+
+			latestSet := make(map[uuid.UUID]struct{}, len(latest))
+			for _, id := range latest {
+				latestSet[id] = struct{}{}
+			}
+
+			current := deploymentIdSlice.Get()
+			currentSet := make(map[uuid.UUID]struct{}, len(current))
+			for _, id := range current {
+				currentSet[id] = struct{}{}
 			}
 
 			deploymentsChanged := false
 
-			// Add new deployments that aren't currently tracked
-			for _, deploymentId := range latestSuccessfulDeploymentIdsForWantedServiceIds {
-				if !deploymentIdSlice.Contains(deploymentId) {
-					deploymentIdSlice.Append(deploymentId)
+			// Add newly-successful deployments we aren't tracking yet.
+			for _, id := range latest {
+				if _, ok := currentSet[id]; !ok {
+					deploymentIdSlice.Append(id)
 					deploymentsChanged = true
 				}
 			}
 
-			// Remove deployments that are no longer in the latest environment data
-			for _, deploymentId := range deploymentIdSlice.Get() {
-				if !slices.Contains(latestSuccessfulDeploymentIdsForWantedServiceIds, deploymentId) {
-					deploymentIdSlice.Delete(deploymentId)
+			// Drop deployments no longer in the latest environment data.
+			for _, id := range current {
+				if _, ok := latestSet[id]; !ok {
+					deploymentIdSlice.Delete(id)
 					deploymentsChanged = true
 				}
 			}

@@ -12,7 +12,15 @@ import (
 	"github.com/brody192/locomotive/internal/util"
 )
 
-func reportStatusAsync(ctx context.Context, deployLogsProcessed *atomic.Int64, httpLogsProcessed *atomic.Int64) {
+// logCounts tracks a pipeline's outcomes: entries successfully shipped, and entries
+// received from Railway but never shipped (serialize failures or dispatcher drops).
+// Always pass by pointer — atomic.Int64 must not be copied.
+type logCounts struct {
+	processed atomic.Int64
+	failed    atomic.Int64
+}
+
+func reportStatusAsync(ctx context.Context, deployLogs *logCounts, httpLogs *logCounts) {
 	var prevDeployLogs, prevHttpLogs atomic.Int64
 
 	go func() {
@@ -27,8 +35,8 @@ func reportStatusAsync(ctx context.Context, deployLogsProcessed *atomic.Int64, h
 			case <-t.C:
 			}
 
-			dl := deployLogsProcessed.Load()
-			hl := httpLogsProcessed.Load()
+			dl := deployLogs.processed.Load()
+			hl := httpLogs.processed.Load()
 
 			if dl > 0 || hl > 0 {
 				logger.Stdout.Info("The locomotive is chugging along...",
@@ -56,8 +64,8 @@ func reportStatusAsync(ctx context.Context, deployLogsProcessed *atomic.Int64, h
 			case <-t.C:
 			}
 
-			dl := deployLogsProcessed.Load()
-			hl := httpLogsProcessed.Load()
+			dl := deployLogs.processed.Load()
+			hl := httpLogs.processed.Load()
 
 			if dl == 0 && hl == 0 {
 				continue
@@ -68,11 +76,16 @@ func reportStatusAsync(ctx context.Context, deployLogsProcessed *atomic.Int64, h
 				slog.Int64("http_logs_processed", hl),
 			)
 
+			// Failure counts and mem stats are debug-only: a creeping "failed" number on
+			// the normal status line tends to alarm people, and real failures already
+			// surface via the dispatcher's own warn/error logs.
 			if logger.Stdout.Enabled(context.Background(), slog.LevelDebug) {
 				memStats := &runtime.MemStats{}
 				runtime.ReadMemStats(memStats)
 
 				statusLog = statusLog.With(
+					slog.Int64("deploy_logs_failed", deployLogs.failed.Load()),
+					slog.Int64("http_logs_failed", httpLogs.failed.Load()),
 					slog.String("total_alloc", util.ByteCountIEC(memStats.TotalAlloc)),
 					slog.String("heap_alloc", util.ByteCountIEC(memStats.HeapAlloc)),
 					slog.String("heap_in_use", util.ByteCountIEC(memStats.HeapInuse)),
