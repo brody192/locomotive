@@ -19,6 +19,21 @@ type EnvironmentData struct {
 				} `json:"node"`
 			} `json:"edges"`
 		} `json:"deployments"`
+		ServiceInstances struct {
+			Edges []struct {
+				Node struct {
+					ServiceID uuid.UUID `json:"serviceId"`
+					Domains   struct {
+						ServiceDomains []struct {
+							Domain string `json:"domain"`
+						} `json:"serviceDomains"`
+						CustomDomains []struct {
+							Domain string `json:"domain"`
+						} `json:"customDomains"`
+					} `json:"domains"`
+				} `json:"node"`
+			} `json:"edges"`
+		} `json:"serviceInstances"`
 		ProjectID uuid.UUID `json:"projectId"`
 	} `json:"environment"`
 }

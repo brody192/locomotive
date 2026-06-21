@@ -32,6 +32,8 @@ Configuration is done through environment variables. See explanation and example
 
 - The root attributes in the HTTP logs are subject to change as Railway adds or removes attributes.
 
+- HTTP logs are only collected for services that have a domain — a service with no domain receives no HTTP traffic, so it produces no HTTP logs. If a domain is added to a service that is already running, locomotive starts collecting its HTTP logs after the service's next deployment (or any other environment change), or after a locomotive restart. Newly deployed services are picked up automatically, since deploying is itself an environment change.
+
 ### All variables:
 
 - `LOCOMOTIVE_RAILWAY_API_KEY` - Your Railway API token.

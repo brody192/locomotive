@@ -21,6 +21,11 @@ import (
 // of a deployment, to pick up logs emitted shortly before locomotive connected.
 const httpLogsInitialBacklog = 24 * time.Hour
 
+// httpLogsStartStagger is the window over which the starts of deployments brought up
+// together are evenly spread, so their streams don't begin in lockstep and send their
+// requests in a synchronized burst.
+const httpLogsStartStagger = 4 * time.Second
+
 // httpLogsPayload builds the subscription payload. beforeDate is the exclusive lower
 // time bound: the backend streams logs with timestamp > beforeDate. On resubscribe we
 // pass the last-seen log timestamp so the backend only returns what's new, instead of
@@ -30,8 +35,7 @@ func httpLogsPayload(deploymentId uuid.UUID, beforeDate time.Time) *subscription
 		Query: subscriptions.HttpLogsSubscription,
 		Variables: &subscriptions.HttpLogsSubscriptionVariables{
 			BeforeDate: beforeDate.UTC().Format(time.RFC3339Nano),
-			// 5000 is the backend's maximum allowed beforeLimit; ask for as much as we can
-			// per poll so high-throughput deployments lose fewer logs to the per-poll cap.
+			// Request a large batch so we keep up with high-throughput deployments.
 			BeforeLimit:  5000,
 			DeploymentId: deploymentId,
 			Filter:       "",
@@ -104,14 +108,14 @@ func SubscribeToHttpLogs(ctx context.Context, g *railway.GraphQLClient, logTrack
 	running := map[uuid.UUID]context.CancelFunc{}
 	done := make(chan uuid.UUID, 16)
 
-	startLogGoroutine := func(deploymentID uuid.UUID) {
+	startLogGoroutine := func(deploymentID uuid.UUID, startOffset time.Duration) {
 		logger.Stdout.Debug("starting HTTP log goroutine for deployment", slog.String("deployment_id", deploymentID.String()))
 
 		depCtx, depCancel := context.WithCancel(ctx)
 		running[deploymentID] = depCancel
 
 		go func() {
-			err := getHttpLogs(depCtx, g, deploymentID, initTime, bufferedLogTrack)
+			err := getHttpLogs(depCtx, g, deploymentID, initTime, startOffset, bufferedLogTrack)
 			metadataDeploymentCache.Delete(deploymentID)
 
 			// A cancelled deployment (no longer wanted, or shutdown) is a clean exit;
@@ -136,11 +140,22 @@ func SubscribeToHttpLogs(ctx context.Context, g *railway.GraphQLClient, logTrack
 		wanted := deploymentIdSlice.Get()
 
 		wantedIDs := make(map[uuid.UUID]struct{}, len(wanted))
+		newIDs := make([]uuid.UUID, 0, len(wanted))
 		for _, id := range wanted {
 			wantedIDs[id] = struct{}{}
 			if _, ok := running[id]; !ok {
-				startLogGoroutine(id)
+				newIDs = append(newIDs, id)
 			}
+		}
+
+		// Even-stagger the starts of newly-wanted deployments across the stagger window so
+		// they don't begin in lockstep. A lone addition starts immediately (offset 0).
+		for i, id := range newIDs {
+			var startOffset time.Duration
+			if len(newIDs) > 1 {
+				startOffset = time.Duration(i) * httpLogsStartStagger / time.Duration(len(newIDs))
+			}
+			startLogGoroutine(id, startOffset)
 		}
 
 		for id, depCancel := range running {
@@ -158,7 +173,13 @@ func SubscribeToHttpLogs(ctx context.Context, g *railway.GraphQLClient, logTrack
 	case err := <-errorChan:
 		return err
 	case <-changeDetected:
-		logger.Stdout.Debug("initial deployment IDs received", slog.Any("deployment_ids", deploymentIdSlice.Get()))
+		if initialDeploymentIds := deploymentIdSlice.Get(); len(initialDeploymentIds) == 0 {
+			logger.Stdout.Info("no services with domains, skipping HTTP logs",
+				slog.String("environment_id", environmentId.String()),
+				slog.Any("service_ids", serviceIds))
+		} else {
+			logger.Stdout.Debug("initial deployment IDs received", slog.Any("deployment_ids", initialDeploymentIds))
+		}
 		syncDeployments()
 	}
 
@@ -177,7 +198,18 @@ func SubscribeToHttpLogs(ctx context.Context, g *railway.GraphQLClient, logTrack
 	}
 }
 
-func getHttpLogs(ctx context.Context, g *railway.GraphQLClient, deploymentID uuid.UUID, initTime time.Time, logTrack chan<- []DeploymentHttpLogWithMetadata) error {
+func getHttpLogs(ctx context.Context, g *railway.GraphQLClient, deploymentID uuid.UUID, initTime time.Time, startOffset time.Duration, logTrack chan<- []DeploymentHttpLogWithMetadata) error {
+	// Wait this deployment's staggered offset before establishing, so streams brought up
+	// together don't begin in lockstep and send their requests in a synchronized burst.
+	// One-time on startup; resubscribes already carry their own backoff jitter.
+	if startOffset > 0 {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(startOffset):
+		}
+	}
+
 	// logTimes is our cursor into the log stream: it starts at the backlog horizon and
 	// advances to the last log we forward, so the payload provider always asks for logs
 	// after what we've already seen — on the first connect and every resubscribe alike.
