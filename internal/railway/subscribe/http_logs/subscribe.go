@@ -173,7 +173,13 @@ func SubscribeToHttpLogs(ctx context.Context, g *railway.GraphQLClient, logTrack
 	case err := <-errorChan:
 		return err
 	case <-changeDetected:
-		logger.Stdout.Debug("initial deployment IDs received", slog.Any("deployment_ids", deploymentIdSlice.Get()))
+		if initialDeploymentIds := deploymentIdSlice.Get(); len(initialDeploymentIds) == 0 {
+			logger.Stdout.Info("no services with domains, skipping HTTP logs",
+				slog.String("environment_id", environmentId.String()),
+				slog.Any("service_ids", serviceIds))
+		} else {
+			logger.Stdout.Debug("initial deployment IDs received", slog.Any("deployment_ids", initialDeploymentIds))
+		}
 		syncDeployments()
 	}
 
