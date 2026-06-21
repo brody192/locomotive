@@ -31,6 +31,10 @@ const (
 	resubscribeBackoffFactor  = 2.0
 	resubscribeBackoffJitter  = 0.5
 
+	// HTTP-log streams can take longer to become available again than other streams, so
+	// they are allowed to back off further before retrying.
+	resubscribeMaxBackoffHTTP = 130 * time.Second
+
 	// maxConcurrentSubscriptionOpens bounds how many subscriptions may be initializing
 	// at the same time, to stay comfortably within the backend's limit on concurrent
 	// subscription initialization. Already-established streams are not limited, so a
@@ -327,6 +331,16 @@ func (s *Subscription) consume(ctx context.Context, onNext func(payload []byte) 
 	}
 }
 
+// resubscribeMaxBackoff returns the backoff ceiling for a subscription type. HTTP-log
+// streams are allowed to back off further than the others before retrying.
+func resubscribeMaxBackoffFor(logType LogType) time.Duration {
+	if logType == LogTypeHTTP {
+		return resubscribeMaxBackoffHTTP
+	}
+
+	return resubscribeMaxBackoff
+}
+
 // Run establishes the stream and consumes it until ctx is cancelled (or onNext fails),
 // re-establishing it whenever it ends. Re-establishment goes through queue.RetryBackoff:
 // each attempt connects (reusing the socket after a clean end, redialing otherwise) and
@@ -344,7 +358,7 @@ func (s *Subscription) Run(ctx context.Context, onNext func(payload []byte) erro
 			queue.Name(string(s.logType)),
 			queue.MaxRetries(-1), // retry until ctx is cancelled or onNext fails
 			queue.InitialBackoff(resubscribeInitialBackoff),
-			queue.MaxBackoff(resubscribeMaxBackoff),
+			queue.MaxBackoff(resubscribeMaxBackoffFor(s.logType)),
 			queue.BackoffMultiplier(resubscribeBackoffFactor),
 			queue.BackoffJitter(resubscribeBackoffJitter),
 			func(ctx context.Context) error {

@@ -26,8 +26,7 @@ func environmentLogsPayload(environmentId uuid.UUID, serviceIds []uuid.UUID, bef
 			Filter:        buildServiceFilter(serviceIds),
 
 			BeforeDate: beforeDate.UTC().Format(time.RFC3339Nano),
-			// 5000 is the backend's maximum allowed beforeLimit; ask for as much as we can
-			// per poll so high-throughput environments lose fewer logs to the per-poll cap.
+			// Request a large batch so we keep up with high-throughput environments.
 			BeforeLimit: 5000,
 		},
 	}

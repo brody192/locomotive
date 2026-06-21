@@ -36,10 +36,23 @@ func fetchEnvironmentWithRetry(ctx context.Context, g *railway.GraphQLClient, en
 }
 
 // findSuccessfulDeploymentsIdsForWantedServiceIds returns the IDs of every successful
-// deployment for the wanted services. All of them are tailed (not just the latest):
-// during a rollover the previous deployment is still draining requests and emitting
-// logs while the new one comes up, so tailing only the newest would drop those.
+// deployment for the wanted services that also have a domain. All matching deployments
+// are tailed (not just the latest): during a rollover the previous deployment is still
+// draining requests and emitting logs while the new one comes up, so tailing only the
+// newest would drop those.
+//
+// Only services with at least one domain (service or custom) receive HTTP traffic, so
+// only they emit HTTP logs — there's nothing to tail for a domainless service. This set
+// is recomputed on every environment change, so a domain added later brings its
+// deployment in on the next refresh.
 func findSuccessfulDeploymentsIdsForWantedServiceIds(environment *queries.EnvironmentData, wantedServiceIds []uuid.UUID) []uuid.UUID {
+	servicesWithDomains := make(map[uuid.UUID]struct{})
+	for _, instance := range environment.Environment.ServiceInstances.Edges {
+		if len(instance.Node.Domains.ServiceDomains) > 0 || len(instance.Node.Domains.CustomDomains) > 0 {
+			servicesWithDomains[instance.Node.ServiceID] = struct{}{}
+		}
+	}
+
 	deploymentIds := []uuid.UUID{}
 
 	for _, deployment := range environment.Environment.Deployments.Edges {
@@ -48,6 +61,10 @@ func findSuccessfulDeploymentsIdsForWantedServiceIds(environment *queries.Enviro
 		}
 
 		if !slices.Contains(wantedServiceIds, deployment.Node.ServiceID) {
+			continue
+		}
+
+		if _, ok := servicesWithDomains[deployment.Node.ServiceID]; !ok {
 			continue
 		}
 
