@@ -40,10 +40,27 @@ Configuration is done through environment variables. See explanation and example
 
     **Required**.
 
-    - Project-level tokens do not work.
     - Team-scoped tokens do not work.
+    - Project-level tokens work, with `LOCOMOTIVE_RAILWAY_PROJECT_TOKEN=true`.
 
     Generate a [Railway API Token](https://railway.com/account/tokens)
+
+    </br>
+
+- `LOCOMOTIVE_RAILWAY_PROJECT_TOKEN` - Whether the token above is a project token.
+
+    **Optional**. Default: `false`.
+
+    Railway authenticates an account or workspace token with an `Authorization: Bearer`
+    header, and a project token with a `Project-Access-Token` header. The two forms are
+    not interchangeable, so this flag selects the header.
+
+    Set it to `true` to run with a project token. A project token is scoped to one
+    environment in one project, which is all this program needs to read a log stream. An
+    account token can perform any action its owner can perform in every workspace they can
+    reach, so the narrower token is the better default where it fits.
+
+    Set `LOCOMOTIVE_ENVIRONMENT_ID` to the environment the project token is scoped to.
 
     </br>
 

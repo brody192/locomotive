@@ -7,6 +7,7 @@ import (
 
 type GraphQLClient struct {
 	AuthToken           uuid.UUID
+	ProjectToken        bool
 	BaseSubscriptionURL string
 	BaseURL             string
 	Client              *graphql.Client

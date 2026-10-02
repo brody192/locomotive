@@ -26,6 +26,7 @@ func run() int {
 
 	gqlClient, err := railway.NewClient(
 		railway.AuthToken(config.Global.RailwayApiKey),
+		railway.ProjectToken(config.Global.RailwayProjectToken),
 		railway.BaseURL("https://backboard.railway.app/graphql/v2"),
 		railway.BaseSubscriptionURL("wss://backboard.railway.app/graphql/internal"),
 	)
