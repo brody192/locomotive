@@ -2,14 +2,11 @@ package reconstruct_sentry
 
 import (
 	"cmp"
-	"strconv"
 	"time"
 
 	"github.com/tidwall/sjson"
 
 	"github.com/brody192/locomotive/internal/logline/reconstructor"
-	"github.com/brody192/locomotive/internal/logline/reconstructor/reconstruct_sentry/sentry_attribute"
-	"github.com/brody192/locomotive/internal/railway/subscribe"
 	"github.com/brody192/locomotive/internal/railway/subscribe/environment_logs"
 	"github.com/brody192/locomotive/internal/util"
 )
@@ -45,21 +42,19 @@ func EnvironmentLogsEnvelope(logs []environment_logs.EnvironmentLogWithMetadata)
 				continue
 			}
 
-			// Railway's API returns the values as JSON strings, so we need to unquote them
-			if s, err := strconv.Unquote(attribute.Value); err == nil {
-				attribute.Value = s
+			key := logAttributeKey(attribute.Key)
+
+			// Railway's API returns the values JSON-encoded, so a quoted value was
+			// logged as a string and must not have its type guessed again.
+			if s, ok := reconstructor.DecodeJSONString(attribute.Value); ok {
+				item = setStringAttribute(item, key, s)
+				continue
 			}
 
-			item = applyStringAttribute(item, attribute.Key, attribute.Value)
+			item = applyStringAttribute(item, key, attribute.Value)
 		}
 
-		for key, value := range logs[i].Metadata {
-			item, _ = sjson.SetRawBytes(item, ("attributes._metadata__" + key), sentry_attribute.StringValue(value).RawJSON())
-		}
-
-		if env := logs[i].Metadata[subscribe.MetadataKeyEnvironmentName]; env != "" {
-			item, _ = sjson.SetBytes(item, `attributes.sentry\.environment.value`, env)
-		}
+		item = applyMetadataAttributes(item, logs[i].Metadata)
 
 		items = append(items, item)
 	}

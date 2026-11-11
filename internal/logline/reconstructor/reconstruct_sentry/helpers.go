@@ -3,11 +3,13 @@ package reconstruct_sentry
 import (
 	"encoding/binary"
 	"encoding/hex"
+	"math"
 	"math/rand/v2"
 	"strconv"
 	"strings"
 
 	"github.com/brody192/locomotive/internal/logline/reconstructor/reconstruct_sentry/sentry_attribute"
+	"github.com/brody192/locomotive/internal/railway/subscribe"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
@@ -73,20 +75,20 @@ var (
 // as a Sentry attribute under the "attributes." path prefix.
 func applyStringAttribute(item []byte, key, value string) []byte {
 	if i, err := strconv.ParseInt(value, 10, 64); err == nil {
-		item, _ = sjson.SetRawBytes(item, ("attributes." + key), sentry_attribute.Int64Value(i).RawJSON())
+		item, _ = sjson.SetRawBytes(item, attributePath(key), sentry_attribute.Int64Value(i).RawJSON())
 		return item
 	}
 
-	if f, err := strconv.ParseFloat(value, 64); err == nil {
-		item, _ = sjson.SetRawBytes(item, ("attributes." + key), sentry_attribute.Float64Value(f).RawJSON())
+	if f, err := strconv.ParseFloat(value, 64); err == nil && isFinite(f) {
+		item, _ = sjson.SetRawBytes(item, attributePath(key), sentry_attribute.Float64Value(f).RawJSON())
 		return item
 	}
 
 	if b, err := strconv.ParseBool(value); err == nil {
 		if b {
-			item, _ = sjson.SetRawBytes(item, ("attributes." + key), rawBoolTrue)
+			item, _ = sjson.SetRawBytes(item, attributePath(key), rawBoolTrue)
 		} else {
-			item, _ = sjson.SetRawBytes(item, ("attributes." + key), rawBoolFalse)
+			item, _ = sjson.SetRawBytes(item, attributePath(key), rawBoolFalse)
 		}
 		return item
 	}
@@ -96,7 +98,7 @@ func applyStringAttribute(item []byte, key, value string) []byte {
 		return flattenToItem(item, key, parsed)
 	}
 
-	item, _ = sjson.SetRawBytes(item, ("attributes." + key), sentry_attribute.StringValue(value).RawJSON())
+	item = setStringAttribute(item, key, value)
 	return item
 }
 
@@ -114,12 +116,22 @@ func applyJSONBytesAttributes(item []byte, jsonBytes []byte) []byte {
 func flattenToItem(item []byte, prefix string, value gjson.Result) []byte {
 	switch value.Type {
 	case gjson.JSON:
+		// An empty container has no leaves, so send it as text rather than drop the key.
+		if prefix != "" && isEmptyContainer(value) {
+			empty := "[]"
+			if value.IsObject() {
+				empty = "{}"
+			}
+			item = setStringAttribute(item, prefix, empty)
+			break
+		}
+
 		switch {
 		case value.IsObject():
 			value.ForEach(func(key, val gjson.Result) bool {
-				newKey := key.String()
-				if prefix != "" {
-					newKey = prefix + "__" + key.String()
+				newKey := prefix + "__" + key.String()
+				if prefix == "" {
+					newKey = logAttributeKey(key.String())
 				}
 				item = flattenToItem(item, newKey, val)
 				return true
@@ -131,15 +143,86 @@ func flattenToItem(item []byte, prefix string, value gjson.Result) []byte {
 			})
 		}
 	case gjson.String:
-		item, _ = sjson.SetRawBytes(item, ("attributes." + prefix), sentry_attribute.StringValue(value.String()).RawJSON())
+		item = setStringAttribute(item, prefix, value.String())
 	case gjson.Number:
-		item, _ = sjson.SetRawBytes(item, ("attributes." + prefix), sentry_attribute.Float64Value(value.Num).RawJSON())
+		// gjson turns an overflowing number into ±Inf, which sjson would write as a
+		// bare +Inf and make Sentry reject the whole envelope, so keep its raw text.
+		if !isFinite(value.Num) {
+			item = setStringAttribute(item, prefix, value.Raw)
+			break
+		}
+		item, _ = sjson.SetRawBytes(item, attributePath(prefix), sentry_attribute.Float64Value(value.Num).RawJSON())
 	case gjson.True:
-		item, _ = sjson.SetRawBytes(item, "attributes."+prefix, rawBoolTrue)
+		item, _ = sjson.SetRawBytes(item, attributePath(prefix), rawBoolTrue)
 	case gjson.False:
-		item, _ = sjson.SetRawBytes(item, ("attributes." + prefix), rawBoolFalse)
+		item, _ = sjson.SetRawBytes(item, attributePath(prefix), rawBoolFalse)
 	case gjson.Null:
-		item, _ = sjson.SetRawBytes(item, ("attributes." + prefix), rawNullStr)
+		item, _ = sjson.SetRawBytes(item, attributePath(prefix), rawNullStr)
 	}
 	return item
+}
+
+// templateAttributes holds the names of the attributes every item starts with.
+var templateAttributes = func() map[string]struct{} {
+	names := make(map[string]struct{})
+	gjson.Get(Item, "attributes").ForEach(func(key, _ gjson.Result) bool {
+		names[key.String()] = struct{}{}
+		return true
+	})
+	return names
+}()
+
+// logAttributeKey prefixes a log's attribute key with "_" when it would
+// otherwise replace one of locomotive's own template attributes.
+func logAttributeKey(key string) string {
+	if _, ok := templateAttributes[key]; ok {
+		return "_" + key
+	}
+	return key
+}
+
+// attributePath returns the sjson path of the attribute named key, escaped so
+// that characters like '.', '*' or '|' stay part of the name instead of being
+// read as path syntax.
+func attributePath(key string) string {
+	escaped := gjson.Escape(key)
+	// sjson reads a leading ':' as a flag and strips it, which gjson.Escape allows.
+	if strings.HasPrefix(escaped, ":") {
+		escaped = `\` + escaped
+	}
+	return "attributes." + escaped
+}
+
+// applyMetadataAttributes sets each metadata entry on item as a "_metadata__"
+// string attribute and the Railway environment name as sentry.environment.
+func applyMetadataAttributes(item []byte, metadata map[string]string) []byte {
+	for key, value := range metadata {
+		item = setStringAttribute(item, "_metadata__"+key, value)
+	}
+
+	if env := metadata[subscribe.MetadataKeyEnvironmentName]; env != "" {
+		item = setStringAttribute(item, "sentry.environment", env)
+	}
+
+	return item
+}
+
+// setStringAttribute sets value on item as the Sentry string attribute named key.
+func setStringAttribute(item []byte, key, value string) []byte {
+	item, _ = sjson.SetRawBytes(item, attributePath(key), sentry_attribute.StringValue(value).RawJSON())
+	return item
+}
+
+func isEmptyContainer(value gjson.Result) bool {
+	empty := true
+	value.ForEach(func(_, _ gjson.Result) bool {
+		empty = false
+		return false
+	})
+	return empty
+}
+
+// isFinite reports whether f can be encoded as a JSON number.
+func isFinite(f float64) bool {
+	return !math.IsInf(f, 0) && !math.IsNaN(f)
 }

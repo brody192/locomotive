@@ -4,8 +4,6 @@ import (
 	"time"
 
 	"github.com/brody192/locomotive/internal/logline/reconstructor"
-	"github.com/brody192/locomotive/internal/logline/reconstructor/reconstruct_sentry/sentry_attribute"
-	"github.com/brody192/locomotive/internal/railway/subscribe"
 	"github.com/brody192/locomotive/internal/railway/subscribe/http_logs"
 	"github.com/tidwall/sjson"
 )
@@ -37,17 +35,11 @@ func HttpLogsEnvelope(logs []http_logs.DeploymentHttpLogWithMetadata) ([]byte, e
 		item, _ = sjson.SetBytes(item, "severity_number", severityNumber)
 		item, _ = sjson.SetBytes(item, "body", logs[i].Path)
 
-		item, _ = sjson.SetRawBytes(item, "attributes.level", sentry_attribute.StringValue(level).RawJSON())
+		item = setStringAttribute(item, "level", level)
 
 		item = applyJSONBytesAttributes(item, logs[i].Log)
 
-		for key, value := range logs[i].Metadata {
-			item, _ = sjson.SetRawBytes(item, ("attributes._metadata__" + key), sentry_attribute.StringValue(value).RawJSON())
-		}
-
-		if env := logs[i].Metadata[subscribe.MetadataKeyEnvironmentName]; env != "" {
-			item, _ = sjson.SetBytes(item, `attributes.sentry\.environment.value`, env)
-		}
+		item = applyMetadataAttributes(item, logs[i].Metadata)
 
 		items = append(items, item)
 	}
