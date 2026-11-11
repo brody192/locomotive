@@ -4,7 +4,6 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/flexstack/uuid"
 	"github.com/hasura/go-graphql-client"
 )
 
@@ -12,13 +11,14 @@ import (
 // so a NewClient(...) call is self-documenting, every field is required at compile time,
 // and the arguments can't be passed in the wrong order.
 type (
-	authTokenParam           struct{ v uuid.UUID }
+	authTokenParam           struct{ v string }
 	baseURLParam             struct{ v string }
 	baseSubscriptionURLParam struct{ v string }
 )
 
-// AuthToken is the Railway API token the client authenticates with.
-func AuthToken(token uuid.UUID) authTokenParam { return authTokenParam{token} }
+// AuthToken is the Railway API token the client authenticates with, as returned by
+// ParseToken.
+func AuthToken(token string) authTokenParam { return authTokenParam{token} }
 
 // BaseURL is the GraphQL HTTP endpoint.
 func BaseURL(url string) baseURLParam { return baseURLParam{url} }
@@ -34,7 +34,7 @@ func NewClient(
 	baseURL baseURLParam,
 	baseSubscriptionURL baseSubscriptionURLParam,
 ) (*GraphQLClient, error) {
-	if authToken.v == uuid.Nil {
+	if authToken.v == "" {
 		return nil, errors.New("auth token must not be empty")
 	}
 
