@@ -26,6 +26,8 @@ Configuration is done through environment variables. See explanation and example
 
 **Notes:**
 
+- Deployment logs can arrive out of timestamp order. Reconnects look back up to 30 seconds and suppress recognized replayed records using all returned log fields and occurrence counts. The cache holds up to 5,000 records; when full, it narrows the reconnect range. Identical records remain ambiguous without stable log IDs, so deduplication is best effort.
+
 - Metadata such as the project, service, and environment names, along with their IDs, are automatically added to the logs that are sent under a `_metadata` attribute.
 
 - Metadata is gathered on startup and then approximately every 10 to 20 minutes. If a project, service, or environment name has changed, the name in the metadata will not be correct until the locomotive refreshes its metadata.
