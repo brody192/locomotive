@@ -19,10 +19,7 @@ func EnvironmentLogsOtel(logs []environment_logs.EnvironmentLogWithMetadata) ([]
 			if reconstructor.IsCommonTimeStampAttribute(a.Key) {
 				continue
 			}
-			v := a.Value
-			if s, err := strconv.Unquote(v); err == nil {
-				v = s
-			}
+			v, _ := reconstructor.DecodeJSONString(a.Value)
 			logAttrs = append(logAttrs, stringAttribute(a.Key, v))
 		}
 
