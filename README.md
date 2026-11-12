@@ -42,8 +42,9 @@ Configuration is done through environment variables. See explanation and example
 
     **Required**.
 
+    - Both the older UUID tokens and the prefixed tokens Railway now issues work.
+    - Account tokens (`rlwy_acct_…`) and workspace tokens (`rlwy_wksp_…`) work.
     - Project-level tokens do not work.
-    - Team-scoped tokens do not work.
 
     Generate a [Railway API Token](https://railway.com/account/tokens)
 

@@ -25,7 +25,7 @@ func run() int {
 	logger.Stdout.Info("Preparing the locomotive for departure...")
 
 	gqlClient, err := railway.NewClient(
-		railway.AuthToken(config.Global.RailwayApiKey),
+		railway.AuthToken(string(config.Global.RailwayApiKey)),
 		railway.BaseURL("https://backboard.railway.app/graphql/v2"),
 		railway.BaseSubscriptionURL("wss://backboard.railway.app/graphql/internal"),
 	)

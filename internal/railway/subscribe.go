@@ -21,7 +21,7 @@ func (g *GraphQLClient) CreateWebSocketSubscription(ctx context.Context, payload
 
 	opts := &websocket.DialOptions{
 		HTTPHeader: http.Header{
-			"Authorization": []string{fmt.Sprintf("Bearer %s", g.AuthToken.String())},
+			"Authorization": []string{fmt.Sprintf("Bearer %s", g.AuthToken)},
 			"Content-Type":  []string{"application/json"},
 		},
 		Subprotocols: []string{"graphql-transport-ws"},
