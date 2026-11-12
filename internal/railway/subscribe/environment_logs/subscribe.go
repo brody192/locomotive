@@ -15,21 +15,31 @@ import (
 )
 
 // environmentLogsPayload builds the subscription payload. beforeDate is the exclusive
-// lower time bound: the backend streams logs with timestamp > beforeDate. We pass our
-// cursor (connect time, then the last-seen log timestamp) so the backend only returns
-// what's new, instead of re-scanning (and re-sending) a backlog window every time.
+// lower time bound. Reconnect overlap is bounded by the retained replay cache.
 func environmentLogsPayload(environmentId uuid.UUID, serviceIds []uuid.UUID, beforeDate time.Time) *subscriptions.EnvironmentLogsSubscriptionPayload {
 	return &subscriptions.EnvironmentLogsSubscriptionPayload{
 		Query: subscriptions.EnvironmentLogsSubscription,
 		Variables: &subscriptions.EnvironmentLogsSubscriptionVariables{
 			EnvironmentId: environmentId,
 			Filter:        buildServiceFilter(serviceIds),
-
-			BeforeDate: beforeDate.UTC().Format(time.RFC3339Nano),
+			BeforeDate:    beforeDate.UTC().Format(time.RFC3339Nano),
 			// Request a large batch so we keep up with high-throughput environments.
 			BeforeLimit: 5000,
 		},
 	}
+}
+
+type serviceLogForwarder struct {
+	startedAt       time.Time
+	newestForwarded time.Time
+	metadataMap     map[uuid.UUID]string
+	logTrack        chan<- []EnvironmentLogWithMetadata
+	replay          logReplayCache
+}
+
+func (f *serviceLogForwarder) subscriptionPayload(environmentId uuid.UUID, serviceIds []uuid.UUID) *subscriptions.EnvironmentLogsSubscriptionPayload {
+	before := f.replay.resumeBefore(f.startedAt, f.newestForwarded)
+	return environmentLogsPayload(environmentId, serviceIds, before)
 }
 
 func SubscribeToServiceLogs(ctx context.Context, g *railway.GraphQLClient, logTrack chan<- []EnvironmentLogWithMetadata, environmentId uuid.UUID, serviceIds []uuid.UUID) error {
@@ -38,81 +48,105 @@ func SubscribeToServiceLogs(ctx context.Context, g *railway.GraphQLClient, logTr
 		return fmt.Errorf("error getting metadata map: %w", err)
 	}
 
-	// LogTime is our cursor into the log stream: it starts at connect time (we only
-	// forward logs from startup onward) and advances to the last log we forward, so the
-	// payload provider always asks for logs after what we've already seen — on the first
-	// connect and every resubscribe alike.
-	LogTime := time.Now().UTC()
+	startedAt := time.Now().UTC()
+	forwarder := &serviceLogForwarder{
+		startedAt:       startedAt,
+		newestForwarded: startedAt,
+		metadataMap:     metadataMap,
+		logTrack:        logTrack,
+	}
 
 	sub := subscribe.NewSubscription(subscribe.LogTypeEnvironment, g.CreateWebSocketSubscription, func() any {
-		return environmentLogsPayload(environmentId, serviceIds, LogTime)
+		return forwarder.subscriptionPayload(environmentId, serviceIds)
 	})
-
 	defer func() { sub.Close() }()
 
 	return sub.Run(ctx, func(payload []byte) error {
-		logs := &subscriptions.EnvironmentLogsData{}
-		if err := json.Unmarshal(payload, &logs); err != nil {
-			logger.Stdout.Error("failed to unmarshal service logs", logger.ErrAttr(err))
-			return nil
-		}
-
-		filteredLogs := make([]EnvironmentLogWithMetadata, 0, len(logs.Payload.Data.EnvironmentLogs))
-
-		for i := range logs.Payload.Data.EnvironmentLogs {
-			// skip logs with empty messages and no attributes
-			// we check for 1 attribute because empty logs will always have at least one attribute, the level
-			if logs.Payload.Data.EnvironmentLogs[i].Message == "" && len(logs.Payload.Data.EnvironmentLogs[i].Attributes) == 1 {
-				continue
-			}
-
-			// skip container logs, container logs have trailing zeros in the timestamp
-			if strings.HasSuffix(logs.Payload.Data.EnvironmentLogs[i].Timestamp.Format(time.StampNano), "000000000") {
-				logger.Stdout.Debug("skipping container log message")
-				continue
-			}
-
-			// on first subscription skip logs if they were logged before the first subscription, on resubscription skip logs if they were already processed
-			if !logs.Payload.Data.EnvironmentLogs[i].Timestamp.After(LogTime) {
-				continue
-			}
-
-			LogTime = logs.Payload.Data.EnvironmentLogs[i].Timestamp
-
-			serviceName := metadataName(metadataMap, logs.Payload.Data.EnvironmentLogs[i].Tags.ServiceID, "service")
-			environmentName := metadataName(metadataMap, logs.Payload.Data.EnvironmentLogs[i].Tags.EnvironmentID, "environment")
-			projectName := metadataName(metadataMap, logs.Payload.Data.EnvironmentLogs[i].Tags.ProjectID, "project")
-
-			filteredLogs = append(filteredLogs, EnvironmentLogWithMetadata{
-				Log: logs.Payload.Data.EnvironmentLogs[i],
-				Metadata: map[string]string{
-					subscribe.MetadataKeyProjectName: projectName,
-					subscribe.MetadataKeyProjectID:   logs.Payload.Data.EnvironmentLogs[i].Tags.ProjectID.String(),
-
-					subscribe.MetadataKeyEnvironmentName: environmentName,
-					subscribe.MetadataKeyEnvironmentID:   logs.Payload.Data.EnvironmentLogs[i].Tags.EnvironmentID.String(),
-
-					subscribe.MetadataKeyServiceName: serviceName,
-					subscribe.MetadataKeyServiceID:   logs.Payload.Data.EnvironmentLogs[i].Tags.ServiceID.String(),
-
-					subscribe.MetadataKeyDeploymentID:         logs.Payload.Data.EnvironmentLogs[i].Tags.DeploymentID.String(),
-					subscribe.MetadataKeyDeploymentInstanceID: logs.Payload.Data.EnvironmentLogs[i].Tags.DeploymentInstanceID.String(),
-
-					subscribe.MetadataKeyLogType: string(subscribe.LogTypeEnvironment),
-				},
-			})
-		}
-
-		if len(filteredLogs) == 0 {
-			return nil
-		}
-
-		select {
-		case logTrack <- filteredLogs:
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-
-		return nil
+		return forwarder.forward(ctx, payload)
 	})
+}
+
+func (f *serviceLogForwarder) forward(ctx context.Context, payload []byte) error {
+	logs := &subscriptions.EnvironmentLogsData{}
+	if err := json.Unmarshal(payload, &logs); err != nil {
+		logger.Stdout.Error("failed to unmarshal service logs", logger.ErrAttr(err))
+		return nil
+	}
+
+	filteredLogs := make([]EnvironmentLogWithMetadata, 0, len(logs.Payload.Data.EnvironmentLogs))
+	replayed := make(map[logFingerprint]int)
+	added := make(map[logFingerprint]forwardedLog)
+	newest := f.newestForwarded
+	for i := range logs.Payload.Data.EnvironmentLogs {
+		log := logs.Payload.Data.EnvironmentLogs[i]
+		// Empty logs have only the level attribute.
+		if log.Message == "" && len(log.Attributes) == 1 {
+			continue
+		}
+
+		// Container logs have trailing zeros in the timestamp.
+		if strings.HasSuffix(log.Timestamp.Format(time.StampNano), "000000000") {
+			logger.Stdout.Debug("skipping container log message")
+			continue
+		}
+
+		// Keep the startup boundary fixed. Older and equal-timestamp arrivals
+		// after startup are valid records. The reconnect position must not
+		// be used to discard these independently received lines.
+		if !log.Timestamp.After(f.startedAt) {
+			continue
+		}
+		key, err := fingerprintLog(log)
+		if err != nil {
+			return fmt.Errorf("fingerprint service log: %w", err)
+		}
+		if replayed[key] < f.replay.remaining[key] {
+			replayed[key]++
+			continue
+		}
+		addition := added[key]
+		addition.timestamp = log.Timestamp
+		addition.count++
+		added[key] = addition
+		if log.Timestamp.After(newest) {
+			newest = log.Timestamp
+		}
+
+		serviceName := metadataName(f.metadataMap, log.Tags.ServiceID, "service")
+		environmentName := metadataName(f.metadataMap, log.Tags.EnvironmentID, "environment")
+		projectName := metadataName(f.metadataMap, log.Tags.ProjectID, "project")
+
+		filteredLogs = append(filteredLogs, EnvironmentLogWithMetadata{
+			Log: log,
+			Metadata: map[string]string{
+				subscribe.MetadataKeyProjectName: projectName,
+				subscribe.MetadataKeyProjectID:   log.Tags.ProjectID.String(),
+
+				subscribe.MetadataKeyEnvironmentName: environmentName,
+				subscribe.MetadataKeyEnvironmentID:   log.Tags.EnvironmentID.String(),
+
+				subscribe.MetadataKeyServiceName: serviceName,
+				subscribe.MetadataKeyServiceID:   log.Tags.ServiceID.String(),
+
+				subscribe.MetadataKeyDeploymentID:         log.Tags.DeploymentID.String(),
+				subscribe.MetadataKeyDeploymentInstanceID: log.Tags.DeploymentInstanceID.String(),
+
+				subscribe.MetadataKeyLogType: string(subscribe.LogTypeEnvironment),
+			},
+		})
+	}
+
+	if len(filteredLogs) == 0 {
+		f.replay.commit(replayed, added, f.startedAt, f.newestForwarded)
+		return nil
+	}
+
+	select {
+	case f.logTrack <- filteredLogs:
+		f.newestForwarded = newest
+		f.replay.commit(replayed, added, f.startedAt, newest)
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
