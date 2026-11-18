@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/brody192/locomotive/internal/logger"
+	"github.com/brody192/locomotive/internal/railway"
 	"github.com/caarlos0/env/v11"
 	"github.com/flexstack/uuid"
 	"github.com/joho/godotenv"
@@ -30,6 +31,9 @@ func init() {
 	if err := env.ParseWithOptions(&Global, env.Options{
 		Prefix: "LOCOMOTIVE_",
 		FuncMap: map[reflect.Type]env.ParserFunc{
+			reflect.TypeFor[railway.Token](): func(envVar string) (any, error) {
+				return railway.ParseToken(envVar)
+			},
 			reflect.TypeFor[uuid.UUID](): func(envVar string) (any, error) {
 				return uuid.FromString(strings.TrimSpace(envVar))
 			},

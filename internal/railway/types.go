@@ -1,12 +1,14 @@
 package railway
 
 import (
-	"github.com/flexstack/uuid"
 	"github.com/hasura/go-graphql-client"
 )
 
+// Token is a Railway API token.
+type Token string
+
 type GraphQLClient struct {
-	AuthToken           uuid.UUID
+	AuthToken           Token
 	BaseSubscriptionURL string
 	BaseURL             string
 	Client              *graphql.Client
