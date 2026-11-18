@@ -13,12 +13,17 @@ import (
 // and the arguments can't be passed in the wrong order.
 type (
 	authTokenParam           struct{ v uuid.UUID }
+	projectTokenParam        struct{ v bool }
 	baseURLParam             struct{ v string }
 	baseSubscriptionURLParam struct{ v string }
 )
 
 // AuthToken is the Railway API token the client authenticates with.
 func AuthToken(token uuid.UUID) authTokenParam { return authTokenParam{token} }
+
+// ProjectToken says whether the auth token is a Railway project token, which changes the
+// header the client authenticates with. See RailwayAuthHeader.
+func ProjectToken(projectToken bool) projectTokenParam { return projectTokenParam{projectToken} }
 
 // BaseURL is the GraphQL HTTP endpoint.
 func BaseURL(url string) baseURLParam { return baseURLParam{url} }
@@ -31,6 +36,7 @@ func BaseSubscriptionURL(url string) baseSubscriptionURLParam { return baseSubsc
 // of order.
 func NewClient(
 	authToken authTokenParam,
+	projectToken projectTokenParam,
 	baseURL baseURLParam,
 	baseSubscriptionURL baseSubscriptionURLParam,
 ) (*GraphQLClient, error) {
@@ -40,13 +46,15 @@ func NewClient(
 
 	httpClient := &http.Client{
 		Transport: &authedTransport{
-			token:   authToken.v,
-			wrapped: http.DefaultTransport,
+			token:        authToken.v,
+			projectToken: projectToken.v,
+			wrapped:      http.DefaultTransport,
 		},
 	}
 
 	gqlClient := &GraphQLClient{
 		AuthToken:           authToken.v,
+		ProjectToken:        projectToken.v,
 		BaseURL:             baseURL.v,
 		BaseSubscriptionURL: baseSubscriptionURL.v,
 	}
