@@ -6,7 +6,7 @@ import (
 )
 
 type authedTransport struct {
-	token   string
+	token   Token
 	wrapped http.RoundTripper
 }
 

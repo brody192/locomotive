@@ -11,14 +11,14 @@ import (
 // so a NewClient(...) call is self-documenting, every field is required at compile time,
 // and the arguments can't be passed in the wrong order.
 type (
-	authTokenParam           struct{ v string }
+	authTokenParam           struct{ v Token }
 	baseURLParam             struct{ v string }
 	baseSubscriptionURLParam struct{ v string }
 )
 
 // AuthToken is the Railway API token the client authenticates with, as returned by
 // ParseToken.
-func AuthToken(token string) authTokenParam { return authTokenParam{token} }
+func AuthToken(token Token) authTokenParam { return authTokenParam{token} }
 
 // BaseURL is the GraphQL HTTP endpoint.
 func BaseURL(url string) baseURLParam { return baseURLParam{url} }

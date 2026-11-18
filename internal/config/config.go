@@ -31,9 +31,8 @@ func init() {
 	if err := env.ParseWithOptions(&Global, env.Options{
 		Prefix: "LOCOMOTIVE_",
 		FuncMap: map[reflect.Type]env.ParserFunc{
-			reflect.TypeFor[railwayToken](): func(envVar string) (any, error) {
-				token, err := railway.ParseToken(envVar)
-				return railwayToken(token), err
+			reflect.TypeFor[railway.Token](): func(envVar string) (any, error) {
+				return railway.ParseToken(envVar)
 			},
 			reflect.TypeFor[uuid.UUID](): func(envVar string) (any, error) {
 				return uuid.FromString(strings.TrimSpace(envVar))

@@ -13,7 +13,7 @@ import (
 // rlwy_wksp_…); each must reach the API exactly as given.
 var tokenCases = []struct {
 	name  string
-	token string
+	token Token
 	want  string
 }{
 	{"legacy uuid token", "0b3f6a52-7c1e-4d7a-9a51-2f4c8e9d1a6b", "Bearer 0b3f6a52-7c1e-4d7a-9a51-2f4c8e9d1a6b"},

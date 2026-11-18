@@ -6,7 +6,7 @@ func TestParseTokenKeepsTheTokenRailwayIssued(t *testing.T) {
 	cases := []struct {
 		name string
 		raw  string
-		want string
+		want Token
 	}{
 		{"legacy uuid token", "0b3f6a52-7c1e-4d7a-9a51-2f4c8e9d1a6b", "0b3f6a52-7c1e-4d7a-9a51-2f4c8e9d1a6b"},
 		{"uppercase uuid token is lowercased as before", "0B3F6A52-7C1E-4D7A-9A51-2F4C8E9D1A6B", "0b3f6a52-7c1e-4d7a-9a51-2f4c8e9d1a6b"},
