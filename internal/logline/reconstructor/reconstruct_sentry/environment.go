@@ -42,16 +42,12 @@ func EnvironmentLogsEnvelope(logs []environment_logs.EnvironmentLogWithMetadata)
 				continue
 			}
 
-			key := logAttributeKey(attribute.Key)
-
-			// Railway's API returns the values JSON-encoded, so a quoted value was
-			// logged as a string and must not have its type guessed again.
+			// Railway's API returns the values as JSON strings, so we need to decode them
 			if s, ok := reconstructor.DecodeJSONString(attribute.Value); ok {
-				item = setStringAttribute(item, key, s)
-				continue
+				attribute.Value = s
 			}
 
-			item = applyStringAttribute(item, key, attribute.Value)
+			item = applyStringAttribute(item, logAttributeKey(attribute.Key), attribute.Value)
 		}
 
 		item = applyMetadataAttributes(item, logs[i].Metadata)

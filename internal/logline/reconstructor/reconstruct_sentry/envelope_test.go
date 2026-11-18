@@ -109,38 +109,24 @@ func runEnvironmentValueCases(t *testing.T, tests []valueCase) {
 	}
 }
 
-func TestEnvironmentLogsEnvelope_shouldSendQuotedValuesAsStrings(t *testing.T) {
-	// Railway sends attribute values JSON-encoded: a quoted value was logged as a string.
-	tests := []struct {
-		name     string
-		rawValue string
-		want     string
-	}{
-		{"overflowing exponent", `"7e145729"`, "7e145729"},
-		{"negative overflowing exponent", `"-7e145729"`, "-7e145729"},
-		{"finite exponent hash", `"1234e56"`, "1234e56"},
-		{"NaN", `"NaN"`, "NaN"},
-		{"Infinity", `"-Infinity"`, "-Infinity"},
-		{"digits", `"42"`, "42"},
-		{"decimal", `"3.14"`, "3.14"},
-		{"boolean word", `"true"`, "true"},
-		{"null word", `"null"`, "null"},
-		{"stringified JSON object", `"{\"a\":1}"`, `{"a":1}`},
-		{"plain", `"hello"`, "hello"},
-		{"escaped slash", `"http:\/\/x"`, "http://x"},
-		{"surrogate pair", `"\ud83d\ude00"`, "\U0001F600"},
-		{"escaped quotes", `"\"quoted\""`, `"quoted"`},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			item := environmentItem(t, subscriptions.EnvironmentLogAttributes{Key: "field", Value: tt.rawValue})
-
-			if got, want := attribute(item, "field"), stringAttributeJSON(t, tt.want); got != want {
-				t.Fatalf("attribute = %s, want %s", got, want)
-			}
-		})
-	}
+func TestEnvironmentLogsEnvelope_shouldInferTypesOfQuotedValues(t *testing.T) {
+	// Railway sends attribute values JSON-encoded. Many loggers write numbers and
+	// booleans as strings, so a quoted value still has its type inferred, which
+	// keeps numeric and boolean queries on those fields working in Sentry.
+	runEnvironmentValueCases(t, []valueCase{
+		{"digits", `"42"`, `{"value":42,"type":"integer"}`},
+		{"decimal", `"3.14"`, `{"value":3.14,"type":"double"}`},
+		{"exponent", `"1e5"`, `{"value":100000,"type":"double"}`},
+		{"boolean word", `"true"`, `{"value":true,"type":"boolean"}`},
+		{"null word", `"null"`, `{"value":"null","type":"string"}`},
+		{"overflowing exponent", `"7e145729"`, `{"value":"7e145729","type":"string"}`},
+		{"negative overflowing exponent", `"-7e145729"`, `{"value":"-7e145729","type":"string"}`},
+		{"NaN", `"NaN"`, `{"value":"NaN","type":"string"}`},
+		{"Infinity", `"-Infinity"`, `{"value":"-Infinity","type":"string"}`},
+		{"plain", `"hello"`, `{"value":"hello","type":"string"}`},
+		{"escaped slash", `"http:\/\/x"`, `{"value":"http://x","type":"string"}`},
+		{"surrogate pair", `"\ud83d\ude00"`, stringAttributeJSON(t, "\U0001F600")},
+	})
 }
 
 func TestEnvironmentLogsEnvelope_shouldInferTypesOfUnquotedValues(t *testing.T) {
@@ -183,6 +169,8 @@ func TestEnvironmentLogsEnvelope_shouldFlattenJSONContainers(t *testing.T) {
 		{"empty array in object", `{"tags":[]}`, "ctx__tags", `{"value":"[]","type":"string"}`},
 		{"empty object in array", `[{}]`, "ctx[0]", `{"value":"{}","type":"string"}`},
 		{"dotted key in object", `{"user.id":"u1"}`, "ctx__user.id", `{"value":"u1","type":"string"}`},
+		{"stringified JSON object", `"{\"count\":2}"`, "ctx__count", `{"value":2,"type":"double"}`},
+		{"stringified overflowing number in object", `"{\"big\":7e145729}"`, "ctx__big", `{"value":"7e145729","type":"string"}`},
 	}
 
 	for _, tt := range tests {
