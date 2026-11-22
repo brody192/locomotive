@@ -58,9 +58,6 @@ func (c config) validate() error {
 	if c.maxQueueSize <= 0 {
 		return fmt.Errorf("MaxQueueSize must be positive, got %d", c.maxQueueSize)
 	}
-	if c.maxRetries < 0 {
-		return fmt.Errorf("MaxRetries must be non-negative, got %d", c.maxRetries)
-	}
 	if c.initialBackoff <= 0 {
 		return fmt.Errorf("InitialBackoff must be positive, got %s", c.initialBackoff)
 	}
@@ -104,6 +101,10 @@ type Dispatcher[T any] struct {
 
 // NewDispatcher creates a new Dispatcher with the given parameters.
 // Call Start to begin processing.
+//
+// A maxRetries below zero retries a failed item until its TTL runs out instead of after a
+// fixed number of attempts, so an outage shorter than the TTL loses nothing while the queue
+// has room. The TTL and the queue size still bound how old and how many items can be held.
 func NewDispatcher[T any](
 	name nameParam,
 	maxQueueSize maxQueueSizeParam,
@@ -196,7 +197,27 @@ func (d *Dispatcher[T]) worker() {
 		case <-d.ctx.Done():
 			return
 		case item := <-d.items:
+			// select picks at random when both cases are ready, so an item can still be
+			// taken after Stop; leave it for drain().
+			if d.ctx.Err() != nil {
+				d.handBack(item)
+				return
+			}
 			d.processItem(item)
+		}
+	}
+}
+
+// handBack returns an item a worker was holding when the dispatcher stopped, so drain()
+// makes the final attempt and the item is counted either way. If the queue is full, the
+// item is dropped and reported now.
+func (d *Dispatcher[T]) handBack(item queueItem[T]) {
+	select {
+	case d.items <- item:
+	default:
+		d.log.Warn("queue full while stopping, dropping held item")
+		if d.OnDrop != nil {
+			d.OnDrop(item.payload, "queue full while stopping")
 		}
 	}
 }
@@ -251,52 +272,57 @@ func (d *Dispatcher[T]) processItem(item queueItem[T]) {
 		return
 	}
 
-	maxAttempts := 1 + d.config.maxRetries
-	var lastErr error
+	untilTTL := d.config.maxRetries < 0
+	expiresAt := item.enqueuedAt.Add(d.config.ttl)
 
-	for attempt := range maxAttempts {
-		if attempt > 0 {
-			if age := time.Since(item.enqueuedAt); age > d.config.ttl {
-				d.log.Warn("dropping item during retry, ttl exceeded",
-					slog.Int("attempt", attempt+1),
-					slog.Duration("age", age.Round(time.Millisecond)),
-					slog.Duration("ttl", d.config.ttl),
+	for attempt := 0; ; attempt++ {
+		if err := d.dispatch(d.ctx, item.payload); err != nil {
+			// Stopping: hand the item to drain() rather than retrying against a
+			// cancelled context or dropping it without a trace.
+			if d.ctx.Err() != nil {
+				d.handBack(item)
+				return
+			}
+
+			if !untilTTL && attempt >= d.config.maxRetries {
+				d.log.Error("dropping item after exhausting all retries",
+					slog.Int("attempts", attempt+1),
+					slog.String("last_err", err.Error()),
 				)
 				if d.OnDrop != nil {
-					d.OnDrop(item.payload, "ttl exceeded during retry")
+					d.OnDrop(item.payload, fmt.Sprintf("max retries exhausted: %s", err.Error()))
 				}
 				return
 			}
-		}
 
-		if err := d.dispatch(d.ctx, item.payload); err != nil {
-			lastErr = err
-
-			if attempt < d.config.maxRetries {
-				backoff := d.backoff(attempt)
-				d.log.Warn("dispatch failed, retrying",
-					slog.Int("attempt", attempt+1),
-					slog.Int("max_attempts", maxAttempts),
-					slog.Duration("next_backoff", backoff),
-					slog.String("err", err.Error()),
+			backoff := d.backoff(attempt)
+			if remaining := time.Until(expiresAt); backoff >= remaining {
+				d.log.Warn("dropping item during retry, ttl exceeded",
+					slog.Int("attempts", attempt+1),
+					slog.Duration("age", time.Since(item.enqueuedAt).Round(time.Millisecond)),
+					slog.Duration("ttl", d.config.ttl),
+					slog.String("last_err", err.Error()),
 				)
-
-				select {
-				case <-d.ctx.Done():
-					return
-				case <-time.After(backoff):
+				if d.OnDrop != nil {
+					d.OnDrop(item.payload, fmt.Sprintf("ttl exceeded during retry: %s", err.Error()))
 				}
-				continue
+				return
 			}
 
-			d.log.Error("dropping item after exhausting all retries",
-				slog.Int("attempts", maxAttempts),
-				slog.String("last_err", lastErr.Error()),
+			d.log.Warn("dispatch failed, retrying",
+				slog.Int("attempt", attempt+1),
+				slog.Duration("next_backoff", backoff),
+				slog.Duration("ttl_remaining", time.Until(expiresAt).Round(time.Millisecond)),
+				slog.String("err", err.Error()),
 			)
-			if d.OnDrop != nil {
-				d.OnDrop(item.payload, fmt.Sprintf("max retries exhausted: %s", lastErr.Error()))
+
+			select {
+			case <-d.ctx.Done():
+				d.handBack(item)
+				return
+			case <-time.After(backoff):
 			}
-			return
+			continue
 		}
 
 		if attempt > 0 {

@@ -134,7 +134,7 @@ func (p LogPipeline[T]) Run(ctx context.Context) error {
 	dispatcher, err := queue.NewDispatcher(
 		queue.Name((name + dispatcherNameSuffix)),
 		queue.MaxQueueSize(1000),
-		queue.MaxRetries(5),
+		queue.MaxRetries(-1), // retry until the TTL, so a webhook outage shorter than it loses nothing
 		queue.InitialBackoff((500 * time.Millisecond)),
 		queue.MaxBackoff((30 * time.Second)),
 		queue.BackoffMultiplier(2.0),
