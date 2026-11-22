@@ -17,26 +17,19 @@ import (
 	"github.com/flexstack/uuid"
 )
 
-// httpLogsInitialBacklog is the lower time bound used for the very first subscription
-// of a deployment, to pick up logs emitted shortly before locomotive connected.
-const httpLogsInitialBacklog = 24 * time.Hour
-
 // httpLogsStartStagger is the window over which the starts of deployments brought up
 // together are evenly spread, so their streams don't begin in lockstep and send their
 // requests in a synchronized burst.
 const httpLogsStartStagger = 4 * time.Second
 
-// httpLogsPayload builds the subscription payload. beforeDate is the exclusive lower
-// time bound: the backend streams logs with timestamp > beforeDate. On resubscribe we
-// pass the last-seen log timestamp so the backend only returns what's new, instead of
-// re-scanning (and re-sending) the whole backlog window every time.
+// httpLogsPayload builds the subscription payload with an exclusive lower time bound.
 func httpLogsPayload(deploymentId uuid.UUID, beforeDate time.Time) *subscriptions.HttpLogsSubscriptionPayload {
 	return &subscriptions.HttpLogsSubscriptionPayload{
 		Query: subscriptions.HttpLogsSubscription,
 		Variables: &subscriptions.HttpLogsSubscriptionVariables{
 			BeforeDate: beforeDate.UTC().Format(time.RFC3339Nano),
 			// Request a large batch so we keep up with high-throughput deployments.
-			BeforeLimit:  5000,
+			BeforeLimit:  httpLogsBatchLimit,
 			DeploymentId: deploymentId,
 			Filter:       "",
 		},
@@ -210,13 +203,16 @@ func getHttpLogs(ctx context.Context, g *railway.GraphQLClient, deploymentID uui
 		}
 	}
 
-	// logTimes is our cursor into the log stream: it starts at the backlog horizon and
-	// advances to the last log we forward, so the payload provider always asks for logs
-	// after what we've already seen — on the first connect and every resubscribe alike.
-	logTimes := time.Now().Add(-httpLogsInitialBacklog)
+	// Request only the portion of history that can be forwarded. Backboard rounds
+	// the exclusive bound down to milliseconds, so apply the precise cutoff below.
+	replay := httpLogReplay{
+		floor:  initTime.Add(-time.Nanosecond).Truncate(time.Millisecond),
+		newest: initTime,
+		recent: make(map[httpLogKey]time.Time),
+	}
 
 	sub := subscribe.NewSubscription(subscribe.LogTypeHTTP, g.CreateWebSocketSubscription, func() any {
-		return httpLogsPayload(deploymentID, logTimes)
+		return httpLogsPayload(deploymentID, replay.resumeBefore())
 	})
 
 	defer func() { sub.Close() }()
@@ -246,6 +242,8 @@ func getHttpLogs(ctx context.Context, g *railway.GraphQLClient, deploymentID uui
 		}
 
 		filteredHttpLogs := make([]DeploymentHttpLogWithMetadata, 0, len(logs.Payload.Data.HTTPLogs))
+		added := make(map[httpLogKey]time.Time)
+		newest := replay.newest
 
 		for i := range logs.Payload.Data.HTTPLogs {
 			logTimestamp, err := getTimeStampAttributeFromHttpLog(logs.Payload.Data.HTTPLogs[i])
@@ -259,7 +257,12 @@ func getHttpLogs(ctx context.Context, g *railway.GraphQLClient, deploymentID uui
 				return fmt.Errorf("failed to get timestamp from http log: %w", err)
 			}
 
-			if !logTimestamp.After(logTimes) || logTimestamp.Before(initTime) {
+			// A replay can deliver a request with an older or equal timestamp.
+			if logTimestamp.Before(initTime) {
+				continue
+			}
+			key := requestKey(logs.Payload.Data.HTTPLogs[i])
+			if _, inBatch := added[key]; inBatch || replay.seen(key) {
 				continue
 			}
 
@@ -289,7 +292,10 @@ func getHttpLogs(ctx context.Context, g *railway.GraphQLClient, deploymentID uui
 				Metadata: metadata,
 			})
 
-			logTimes = logTimestamp
+			added[key] = logTimestamp
+			if logTimestamp.After(newest) {
+				newest = logTimestamp
+			}
 		}
 
 		if len(filteredHttpLogs) == 0 {
@@ -298,6 +304,7 @@ func getHttpLogs(ctx context.Context, g *railway.GraphQLClient, deploymentID uui
 
 		select {
 		case logTrack <- filteredHttpLogs:
+			replay.commit(added, newest)
 		case <-ctx.Done():
 			return ctx.Err()
 		}
