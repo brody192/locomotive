@@ -187,7 +187,7 @@ func TestSubscribeToServiceLogsWebSocketReconnect(t *testing.T) {
 			}))
 			defer server.Close()
 			defer cancel()
-			client, err := railway.NewClient(railway.AuthToken(token), railway.BaseURL(server.URL+"/graphql"), railway.BaseSubscriptionURL(strings.Replace(server.URL, "http://", "ws://", 1)+"/ws"))
+			client, err := railway.NewClient(railway.AuthToken(railway.Token(token.String())), railway.BaseURL(server.URL+"/graphql"), railway.BaseSubscriptionURL(strings.Replace(server.URL, "http://", "ws://", 1)+"/ws"))
 			if err != nil {
 				t.Fatal(err)
 			}
