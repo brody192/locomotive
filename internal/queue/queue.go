@@ -275,10 +275,15 @@ func (d *Dispatcher[T]) processItem(item queueItem[T]) {
 	untilTTL := d.config.maxRetries < 0
 	expiresAt := item.enqueuedAt.Add(d.config.ttl)
 
+	// Stop doesn't cut a send short: one already in flight finishes (bounded by the
+	// webhook client's timeout), so a batch the receiver already has isn't sent again
+	// by drain(). Stop only interrupts the wait between attempts.
+	sendCtx := context.WithoutCancel(d.ctx)
+
 	for attempt := 0; ; attempt++ {
-		if err := d.dispatch(d.ctx, item.payload); err != nil {
-			// Stopping: hand the item to drain() rather than retrying against a
-			// cancelled context or dropping it without a trace.
+		if err := d.dispatch(sendCtx, item.payload); err != nil {
+			// Stopping: hand the item to drain() for the last attempt rather than
+			// backing off again or dropping it without a trace.
 			if d.ctx.Err() != nil {
 				d.handBack(item)
 				return

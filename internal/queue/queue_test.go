@@ -199,3 +199,56 @@ func TestDispatcherStopDuringBackoff(t *testing.T) {
 		}
 	})
 }
+
+// Stopping while a send is in flight must not abort it: the receiver may already have
+// the batch, and aborting it would make drain() send it a second time.
+func TestDispatcherStopDuringSend(t *testing.T) {
+	var (
+		mu       sync.Mutex
+		received = map[int]int{}
+		inFlight atomic.Int64
+	)
+	// A slow receiver that, like the HTTP client, gives up when its context is
+	// cancelled, after the request has already reached it.
+	slow := func(ctx context.Context, item int) error {
+		mu.Lock()
+		received[item]++
+		mu.Unlock()
+		inFlight.Add(1)
+		select {
+		case <-time.After(300 * time.Millisecond):
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+
+	d, err := NewDispatcher(
+		Name("test"), MaxQueueSize(100), MaxRetries(-1),
+		InitialBackoff(10*time.Millisecond), MaxBackoff(time.Second), BackoffMultiplier(2),
+		TTL(time.Minute), Workers(4), slow,
+	)
+	if err != nil {
+		t.Fatalf("NewDispatcher: %v", err)
+	}
+	var delivered, dropped atomic.Int64
+	d.OnSuccess = func(int, int) { delivered.Add(1) }
+	d.OnDrop = func(int, string) { dropped.Add(1) }
+
+	d.Start(context.Background())
+	for i := range 10 {
+		d.Enqueue(i)
+	}
+	waitFor(t, time.Second, func() bool { return inFlight.Load() >= 4 }) // every worker mid-send
+
+	d.Stop()
+
+	if got := delivered.Load(); got != 10 {
+		t.Fatalf("delivered %d of 10, dropped %d", got, dropped.Load())
+	}
+	for item, n := range received {
+		if n != 1 {
+			t.Errorf("item %d reached the receiver %d times", item, n)
+		}
+	}
+}
